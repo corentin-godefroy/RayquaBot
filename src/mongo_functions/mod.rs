@@ -1,20 +1,17 @@
 pub mod mongo_functions {
-    use std::borrow::Borrow;
-    use std::ops::{Deref, DerefMut};
-    use lazy_static::lazy_static;
     use mongodb::Client;
-    use mongodb::options::ClientOptions;
-    use serenity::client::Context;
-    use serenity::framework::standard::macros::command;
     use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
-    use crate::{doc, MongoClient, MongoClientOptions, ping_reactor};
+    use crate::doc;
 
-    pub async fn new_edition_insertion(client : &Client, command : ApplicationCommandInteraction, ctx : Context) {
-        let name = command.data.options[0].value.as_ref().unwrap().as_str().unwrap();
-        let number = command.data.options[1].value.as_ref().unwrap().as_str().unwrap();
-        let edition = name.to_string() + " " + &*number.to_string();
+    pub async fn new_edition_insertion(client : &Client, command : &ApplicationCommandInteraction) {
+        let name = command.data.options.get(0).unwrap().value.as_ref().unwrap().to_string();
+        let numero = command.data.options.get(1).unwrap().value.as_ref().unwrap().to_string();
+        let edition = name.to_string() + " " + &*numero.to_string();
+        let organisateur = command.user.id.0.to_string();
+
         let collection =  client.database("RayquaBot").collection("editions");
         let doc = doc! {
+            "organisateur" : organisateur,
             "edition": edition
         };
         collection.insert_one(doc, None).await.expect("Failed to insert document");
