@@ -12,7 +12,11 @@ pub mod mongo_functions {
         let collection =  client.database("RayquaBot").collection("editions");
         let doc = doc! {
             "organisateur" : organisateur,
-            "edition": edition
+            "edition": edition,
+            "date_debut_inscription": "",
+            "date_fin_inscription": "",
+            "date_debut_competition": "",
+            "date_fin_competition": ""
         };
         collection.insert_one(doc, None).await.expect("Failed to insert document");
     }
