@@ -1,7 +1,5 @@
-pub mod command_reactor;
-pub mod mongo_functions;
-pub mod command_setup;
-pub mod modals;
+pub mod commands;
+use crate::commands::ping::*;
 
 use std::borrow::Borrow;
 
@@ -13,20 +11,17 @@ use serenity::{
 use std::env;
 use mongodb::bson::doc;
 use serenity::framework::StandardFramework;
-use serenity::model::application::interaction::{Interaction, InteractionResponseType};
+use serenity::model::application::interaction::{Interaction};
 
 use mongodb::{Client as MongoClient};
-use crate::mongo_functions::mongo_functions::new_edition_insertion;
 
 use once_cell::sync::OnceCell;
-use serenity::builder::CreateEmbed;
-use serenity::model::application::component::ActionRowComponent;
-use crate::command_reactor::command_reactor::{new_edition_reactor, ping_reactor};
-use crate::command_setup::command_setup::{new_edition_setup, ping_setup};
-use crate::modals::modals::new_edition_modal;
+use crate::commands::new_edition::{new_edition_reactor, new_edition_setup, prompt_date_modal};
 
+//global variable for mongodb client
 static MONGOCLIENT: OnceCell<MongoClient> = OnceCell::new();
 
+//handler discord, bot core
 struct HandlerDiscord;
 #[async_trait]
 impl EventHandler for HandlerDiscord {
@@ -48,7 +43,7 @@ impl EventHandler for HandlerDiscord {
 
             Interaction::ModalSubmit(mci) => {
                 match mci.data.custom_id.as_str() {
-                    "modal_app_cmd" => new_edition_modal(mci, ctx).await,
+                    "modal_app_cmd" => prompt_date_modal(mci, ctx, "Debut des inscriptions".to_string()).await,
                     _ => ()
                 }},
 
@@ -57,6 +52,7 @@ impl EventHandler for HandlerDiscord {
     }
 }
 
+//main function, setup for clients
 #[tokio::main]
 async fn main() {
     //setup mongo client
