@@ -16,7 +16,7 @@ use serenity::model::application::interaction::{Interaction};
 use mongodb::{Client as MongoClient};
 
 use once_cell::sync::OnceCell;
-use crate::commands::new_edition::{new_edition_reactor, new_edition_setup, prompt_date_modal};
+use crate::commands::new_edition::*;
 
 //global variable for mongodb client
 static MONGOCLIENT: OnceCell<MongoClient> = OnceCell::new();
@@ -43,7 +43,7 @@ impl EventHandler for HandlerDiscord {
 
             Interaction::ModalSubmit(mci) => {
                 match mci.data.custom_id.as_str() {
-                    "modal_app_cmd" => prompt_date_modal(mci, ctx, "Debut des inscriptions".to_string()).await,
+                    "competition" => prompt_date_debut_inscription_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
                     _ => ()
                 }},
 
