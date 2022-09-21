@@ -1,8 +1,5 @@
 use std::cmp::Ordering;
 use std::cmp::Ordering::{Equal, Greater, Less};
-
-
-
 use mongodb::Client;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::builder::{CreateEmbed};
@@ -13,11 +10,23 @@ use serenity::client::Context;
 use serenity::model::application::command::{Command, CommandOptionType};
 use mongodb::{Client as MongoClient};
 use mongodb::bson::Document;
-
+use chrono;
+use chrono::{NaiveDate, NaiveDateTime, ParseResult};
+use serenity::futures::StreamExt;
 use serenity::model::application::component::InputTextStyle;
+use serenity::model::id::GuildId;
 
 use crate::doc;
 
+struct Edition {
+    organisateur : String,
+    nom : String,
+    guild_id: String,
+    date_debut_inscription: i64,
+    date_fin_inscription: i64,
+    date_debut_competition: i64,
+    date_fin_competition: i64
+}
 
 struct DATE {
     jour : u8,
@@ -44,55 +53,31 @@ impl Clone for DATE {
 pub async fn new_edition_setup(ctx: &Context) {
     let _ = Command::create_global_application_command(&ctx.http, |command| {
         command
-            .name("new_edition")
-            .description("Create a new edition")
-            .create_option(|option| {
-                option
-                    .name("name")
-                    .description("Name of the edition")
-                    .kind(CommandOptionType::String)
-                    .required(true)
-            })
-            .create_option(|option| {
-                option
-                    .name("number")
-                    .description("Number of the edition")
-                    .kind(CommandOptionType::String)
-                    .required(true)
-            })
+            .name("nouvelle_edition")
+            .description("Créé une nouvelle édition.")
     })
         .await;
-}
-
-pub async fn new_edition_insertion(client : &Client, command : &ApplicationCommandInteraction) {
-    let name = command.data.options.get(0).unwrap().value.as_ref().unwrap().to_string();
-    let numero = command.data.options.get(1).unwrap().value.as_ref().unwrap().to_string();
-    let organisateur = command.user.id.0.to_string();
-    let guild = command.guild_id.unwrap().0.to_string();
-
-    let collection =  client.database("RayquaBot").collection("editions");
-    let doc = doc! {
-            "organisateur" : organisateur,
-            "nom" : name,
-            "numero" : numero,
-            "guild_id": &guild,
-            "time_zone" : "",
-            "date_debut_inscription": "",
-            "date_fin_inscription": "",
-            "date_debut_competition": "",
-            "date_fin_competition": ""
-        };
-    collection.insert_one(doc, None).await.expect("Failed to insert document");
 }
 
 pub async unsafe fn new_edition_reactor(client : &MongoClient, command : &ApplicationCommandInteraction, context : &Context) {
     let ctx = context;
     let com = &command.clone();
-    new_edition_insertion(client, com).await;
     command.create_interaction_response(&ctx.http, |response| {
         response.kind(InteractionResponseType::Modal)
             .interaction_response_data(|message|
                 message.components(|components| {
+                    components.create_action_row(|action_row| {
+                        action_row.create_input_text(|input_text| {
+                            input_text
+                                .custom_id("nom")
+                                .placeholder("Le couple nom/numéro doit être différent des anciennes éditions")
+                                .min_length(4)
+                                .max_length(30)
+                                .required(true)
+                                .label("Nom de l'édition avec un numéro (ou année).")
+                                .style(InputTextStyle::Short)
+                        })
+                    });
                     components.create_action_row(|action_row| {
                         action_row.create_input_text(|input_text| {
                             input_text
@@ -127,7 +112,7 @@ pub async unsafe fn new_edition_reactor(client : &MongoClient, command : &Applic
 }
 
 pub async fn prompt_date_debut_inscription_modal(client : &MongoClient, mci : ModalSubmitInteraction, ctx : serenity::client::Context) {
-    let date_inscription = match mci
+    let nom_competition = match mci
         .data
         .components
         .get(0)
@@ -140,7 +125,7 @@ pub async fn prompt_date_debut_inscription_modal(client : &MongoClient, mci : Mo
         _ => return,
     };
 
-    let date_competition = match mci
+    let date_inscription = match mci
         .data
         .components
         .get(1)
@@ -153,71 +138,50 @@ pub async fn prompt_date_debut_inscription_modal(client : &MongoClient, mci : Mo
         _ => return,
     };
 
+    let date_competition = match mci
+        .data
+        .components
+        .get(2)
+        .unwrap()
+        .components
+        .get(0)
+        .unwrap()
+    {
+        ActionRowComponent::InputText(it) => it,
+        _ => return,
+    };
+
     let date_inscription = parsing_two_dates(date_inscription.value.as_str());
     let date_competition = parsing_two_dates(date_competition.value.as_str());
-    let guild = mci.guild_id.unwrap().to_string();
+    let guild = mci.guild_id.unwrap();
+    let organisateur = mci.user.id.0.to_string();
 
-    let collection =  client.database("RayquaBot").collection::<Document>("editions");
 
-    //todo Vérifier qu'il n'existe pas déjà une édition sur le même serveur a la même periode
-    collection.find(doc! {"guild_id": &guild}, None).await.expect("Failed to find document");
+    let timestamp_debut_inscription = get_timestamp_from_DATE(&date_inscription.0);
+    resolver_timestamp(&timestamp_debut_inscription, &mci, &ctx, &client).await;
+    let timestamp_fin_inscription = get_timestamp_from_DATE(&date_inscription.1);
+    resolver_timestamp(&timestamp_fin_inscription, &mci, &ctx, &client).await;
+    let timestamp_debut_competition = get_timestamp_from_DATE(&date_competition.0);
+    resolver_timestamp(&timestamp_debut_competition, &mci, &ctx, &client).await;
+    let timestamp_fin_competition = get_timestamp_from_DATE(&date_competition.1);
+    resolver_timestamp(&timestamp_fin_competition, &mci, &ctx, &client).await;
 
-    match verification_existance_date(&date_inscription.0){
-        Err(e) => {
-            send_error(&mci, &ctx, &e).await;
-            collection.delete_one(doc! {"guild_id": guild}, None).await.expect("Failed to delete document");
-            return;
-        },
-        _ => ()
-    }
+    verification_chevauchement_edition(&timestamp_debut_inscription.as_ref().unwrap(), &client, &guild, &ctx, &mci).await;
+    verification_chevauchement_edition(&timestamp_debut_competition.as_ref().unwrap(), &client, &guild, &ctx, &mci).await;
+    verification_chevauchement_edition(&timestamp_fin_inscription.as_ref().unwrap(), &client, &guild, &ctx, &mci).await;
+    verification_chevauchement_edition(&timestamp_fin_competition.as_ref().unwrap(), &client, &guild, &ctx, &mci).await;
 
-    match verification_existance_date(&date_inscription.1){
-        Err(e) => {
-            send_error(&mci, &ctx, &e).await;
-            collection.delete_one(doc! {"guild_id": guild}, None).await.expect("Failed to delete document");
-            return;
-        },
-        _ => ()
-    }
-
-    match verification_existance_date(&date_competition.0){
-        Err(e) => {
-            send_error(&mci, &ctx, &e).await;
-            collection.delete_one(doc! {"guild_id": guild}, None).await.expect("Failed to delete document");
-            return;
-        },
-        _ => ()
-    }
-
-    match verification_existance_date(&date_competition.1){
-        Err(e) => {
-            send_error(&mci, &ctx, &e).await;
-            collection.delete_one(doc! {"guild_id": guild}, None).await.expect("Failed to delete document");
-            return;
-        },
-        _ => ()
-    }
-
-    let validite_dates = verifications_dates(&date_inscription, &date_competition);
-    match validite_dates{
-        "ok" => (),
-        _ => { send_error(&mci, &ctx, validite_dates).await;
-            collection.delete_one(doc! {"guild_id": guild}, None).await.expect("Failed to delete document");
-            return;
-        }
-    }
-
-    collection.update_one(
-            doc! {"guild_id": guild},
-            doc! {
-                "$set": {
-                    "date_debut_inscription": format!("{}", date_inscription.0.to_string()),
-                    "date_fin_inscription": format!("{}", date_inscription.1.to_string()),
-                    "date_debut_competition": format!("{}", date_competition.0.to_string()),
-                    "date_fin_competition": format!("{}", date_competition.1.to_string())
-                }}, None)
-        .await
-        .unwrap();
+    let collection =  client.database("RayquaBot").collection("editions");
+    let doc = doc! {
+            "organisateur" : organisateur,
+            "nom" : nom_competition.value.as_str(),
+            "guild_id": &guild.0.to_string(),
+            "date_debut_inscription": &timestamp_debut_inscription.unwrap(),
+            "date_fin_inscription": &timestamp_fin_inscription.unwrap(),
+            "date_debut_competition": &timestamp_debut_competition.unwrap(),
+            "date_fin_competition": &timestamp_fin_competition.unwrap()
+        };
+    collection.insert_one(doc, None).await.expect("Failed to insert document");
 
     mci.create_interaction_response(ctx, |r| {
         r.kind(InteractionResponseType::ChannelMessageWithSource)
@@ -260,106 +224,47 @@ fn parse_one_date(date : &str) -> DATE {
     date
 }
 
-fn comparaison_dates(date1 : &DATE, date2 : &DATE) -> Ordering {
-    if date1.annee > date2.annee {
-        return Greater;
-    } else if date1.annee == date2.annee {
-        if date1.mois > date2.mois {
-            return Greater;
-        } else if date1.mois == date2.mois {
-            if date1.jour > date2.jour {
-                return Greater;
-            }
-            else { return Equal; }
-        }
-    }
-    Less
-}
 
-#[test]
-fn test_parsing_two_dates() {
-    let date = "01/01/2021-02/02/2021";
-    let date = parsing_two_dates(date);
-    assert_eq!(comparaison_dates(&date.0, &date.1), Less);
-    assert_eq!(comparaison_dates(&date.1, &date.0), Greater);
-    assert_eq!(comparaison_dates(&date.0, &date.0), Equal);
-}
-
-fn verifications_dates(date_inscription : &(DATE, DATE), date_competition : &(DATE, DATE)) -> &'static str {
-    match comparaison_dates(&date_inscription.0, &date_competition.0){
-        Greater => {return "La date de début des inscriptions est supérieure à la date de fin du début de la compétition.";},
-        _ => ()
-    }
-
-    match comparaison_dates(&date_inscription.1, &date_competition.1){
-        Greater => {return "La date de fin des inscriptions est supérieure à la date de fin de la compétition.";},
-        _ => ()
-    }
-
-    match comparaison_dates(&date_inscription.0, &date_inscription.1){
-        Greater => {return "La date de début des inscriptions est supérieure à la date de fin des inscirptions.";},
-        _ => ()
-    }
-
-    match comparaison_dates(&date_competition.0, &date_competition.1){
-        Greater => {return "La date de début de la compétition est supérieure à la date de fin de la compétition.";},
-        _ => ()
-    }
-
-    "ok"
-}
-
-fn verification_chevauchement_edition(date : &DATE, client : &MongoClient) {
-    //todo
-}
-
-fn verification_existance_date(date : &DATE) -> Result< String, String> {
-    if date.annee <= 2021 { return Err("Attention l'année saisie est passée !".to_string()) }
-    match date.mois{
-        2 => {
-            if ((date.annee %4 == 0) && (date.annee %100 != 0)) || (date.annee % 400 == 0) {
-                if (date.jour <= 29) && (date.jour >= 1){ return Ok(date.to_string())}
-            }
-            else if(date.jour <= 28) && (date.jour >= 1){ return Ok(date.to_string())}
-            return Err("La date n'est pas dans le mois. Attention aux années bisextilles !".to_string())
-        },
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => {
-            if (date.jour <= 31) && (date.jour >= 1){
-                return Ok(date.to_string());
-            }
-            return Err("La date n'est pas dans le mois !".to_string());
-        },
-        4 | 6 | 9 | 11 => {
-            if (date.jour <= 30) && (date.jour >= 1){
-                return Ok(date.to_string());
-            }
-            return Err("La date n'est pas dans le mois !".to_string());
-        },
-
-        _ => Err("Le mois n'existe pas !".to_string())
+async fn verification_chevauchement_edition(timestamp : &i64, client : &MongoClient, guild_id : &GuildId, ctx : &Context, mci : &ModalSubmitInteraction) {
+    //todo FIXIT
+    let count = client.database("RayquaBot").collection::<Document>("edition").aggregate(
+        [
+            doc! {
+                "$match": doc! {
+                    "$and": [
+                        doc! {
+                            "date_debut_inscription": doc! {
+                                "$lt": timestamp
+                            }
+                        },
+                        doc! {
+                            "date_fin_competition": doc! {
+                                "$gt": timestamp
+                            }
+                        },
+                        doc! {
+                            "guild_id": doc! {
+                                "$eq": guild_id.0.to_string()
+                            }
+                        }
+                    ]
+                }
+            },
+        ], None).await.unwrap().count().await;
+    if count > 0 {
+        send_error(&mci, &ctx, "L'édition chevauche une édition existante !").await;
+        panic!("Chevauchement d'édition !")
     }
 }
 
-#[test]
-fn test_verification_existance_date(){
-    let date = parse_one_date(&"02/31/2022");
-    assert!(verification_existance_date(&date).is_err() );
-}
-
-#[test]
-fn test_verification_existance_date2(){
-    let date = parse_one_date(&"25/02/2022");
-    assert_eq!(verification_existance_date(&date).unwrap(), "25-02-2022");
-}
-
-async fn send_error (mci : &ModalSubmitInteraction, ctx : &Context, erreur : &str) {
+async fn send_error (mci : &ModalSubmitInteraction, ctx : &Context, err : &str) {
     mci.create_interaction_response(ctx, |r| {
         r.kind(InteractionResponseType::ChannelMessageWithSource)
             .interaction_response_data(|d| {
                 d.add_embed(
                     CreateEmbed::default()
                         .title("Erreur !")
-                        .description(erreur)
+                        .description(err)
                         .color(0xff0000)
                         .to_owned()
                 )
@@ -367,4 +272,25 @@ async fn send_error (mci : &ModalSubmitInteraction, ctx : &Context, erreur : &st
     })
         .await
         .unwrap();
+}
+
+fn get_timestamp_from_DATE(date : &DATE) -> Result<i64, String> {
+    match NaiveDate::from_ymd_opt(date.annee as i32, date.mois as u32, date.jour as u32){
+        Some(date) => {
+            let date = date.and_hms(0, 0, 0);
+            let timestamp = date.timestamp();
+            Ok(timestamp)
+        },
+        None => Err("Date invalide".to_string())
+    }
+}
+
+async fn resolver_timestamp(t : &Result<i64, String>, mci : &ModalSubmitInteraction, ctx : &Context, db : &MongoClient) {
+    match t {
+        Err(err) => {
+            send_error( &mci, &ctx, &err).await;
+            panic!("Date invalide !")
+        },
+        _ => ()
+    }
 }

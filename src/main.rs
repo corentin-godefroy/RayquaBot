@@ -1,3 +1,5 @@
+extern crate core;
+
 pub mod commands;
 use crate::commands::ping::*;
 
@@ -37,7 +39,7 @@ impl EventHandler for HandlerDiscord {
                 unsafe {
                     match command.data.name.as_str() {
                         "ping" => ping_reactor(&command, &ctx).await,
-                        "new_edition" => new_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
+                        "nouvelle_edition" => new_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
                         _ => ()
                     }}},
 
