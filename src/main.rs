@@ -14,11 +14,10 @@ use std::env;
 use mongodb::bson::doc;
 use serenity::framework::StandardFramework;
 use serenity::model::application::interaction::{Interaction};
-
 use mongodb::{Client as MongoClient};
-
 use once_cell::sync::OnceCell;
 use crate::commands::new_edition::*;
+use crate::commands::delete_edition::*;
 
 //global variable for mongodb client
 static MONGOCLIENT: OnceCell<MongoClient> = OnceCell::new();
@@ -30,7 +29,8 @@ impl EventHandler for HandlerDiscord {
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
         ping_setup(ctx.borrow()).await;
-        new_edition_setup(ctx.borrow()).await
+        new_edition_setup(ctx.borrow()).await;
+        delete_edition_setup(ctx.borrow()).await;
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -39,13 +39,20 @@ impl EventHandler for HandlerDiscord {
                 unsafe {
                     match command.data.name.as_str() {
                         "ping" => ping_reactor(&command, &ctx).await,
-                        "nouvelle_edition" => new_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
+                        "new_edition" => new_edition_reactor(&command, &ctx).await,
+                        "delete_edition" => delete_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
                         _ => ()
                     }}},
 
             Interaction::ModalSubmit(mci) => {
                 match mci.data.custom_id.as_str() {
-                    "competition" => prompt_date_debut_inscription_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
+                    "new_edition_modal" => prompt_edition_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
+                    _ => ()
+                }},
+
+            Interaction::MessageComponent(mci) => {
+                match mci.data.custom_id.as_str() {
+                    "delete_edition_modal" => delete_edition_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
                     _ => ()
                 }},
 

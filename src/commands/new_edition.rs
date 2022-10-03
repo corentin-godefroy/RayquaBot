@@ -1,32 +1,32 @@
-use std::cmp::Ordering;
-use std::cmp::Ordering::{Equal, Greater, Less};
-use mongodb::Client;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::builder::{CreateEmbed};
 use serenity::model::application::component::ActionRowComponent;
 use serenity::model::application::interaction::InteractionResponseType;
 use serenity::model::application::interaction::modal::ModalSubmitInteraction;
 use serenity::client::Context;
-use serenity::model::application::command::{Command, CommandOptionType};
+use serenity::model::application::command::{Command};
 use mongodb::{Client as MongoClient};
 use mongodb::bson::Document;
 use chrono;
-use chrono::{NaiveDate, NaiveDateTime, ParseResult};
-use serenity::futures::StreamExt;
+use chrono::{NaiveDate};
+
 use serenity::model::application::component::InputTextStyle;
 use serenity::model::id::GuildId;
+use serenity::model::Permissions;
 
 use crate::doc;
 
-struct Edition {
-    organisateur : String,
-    nom : String,
-    guild_id: String,
-    date_debut_inscription: i64,
-    date_fin_inscription: i64,
-    date_debut_competition: i64,
-    date_fin_competition: i64
-}
+const EDITIONS_COLLECTION: &str = "editions";
+const RAYQUABOT_DB : &str = "RayquaBot";
+const DATE_DEBUT_INSCRIPTION : &str = "date_debut_inscription";
+const DATE_FIN_INSCRIPTION : &str = "date_fin_inscription";
+const DATE_DEBUT_COMPETITION : &str = "date_debut_competition";
+const DATE_FIN_COMPETITION : &str = "date_fin_competition";
+const GUILD_ID : &str = "guild_id";
+const NOM_EDITION : &str = "nom_edition";
+const ORGANISATEUR : &str = "organisateur";
+const RED_COLOR : i32 = 0xff0000;
+const GREEN_COLOR : i32 = 0x00ff00;
 
 struct DATE {
     jour : u8,
@@ -53,15 +53,15 @@ impl Clone for DATE {
 pub async fn new_edition_setup(ctx: &Context) {
     let _ = Command::create_global_application_command(&ctx.http, |command| {
         command
-            .name("nouvelle_edition")
+            .name("new_edition")
             .description("Créé une nouvelle édition.")
+            .default_member_permissions(Permissions::ADMINISTRATOR)
     })
         .await;
 }
 
-pub async unsafe fn new_edition_reactor(client : &MongoClient, command : &ApplicationCommandInteraction, context : &Context) {
+pub async unsafe fn new_edition_reactor(command : &ApplicationCommandInteraction, context : &Context) {
     let ctx = context;
-    let com = &command.clone();
     command.create_interaction_response(&ctx.http, |response| {
         response.kind(InteractionResponseType::Modal)
             .interaction_response_data(|message|
@@ -104,14 +104,14 @@ pub async unsafe fn new_edition_reactor(client : &MongoClient, command : &Applic
                     })
                 })
                     .title("Dates de la compétition")
-                    .custom_id("competition")
+                    .custom_id("new_edition_modal")
             )
     })
         .await
         .expect("Failed to send interaction response");
 }
 
-pub async fn prompt_date_debut_inscription_modal(client : &MongoClient, mci : ModalSubmitInteraction, ctx : serenity::client::Context) {
+pub async fn prompt_edition_modal(client : &MongoClient, mci : ModalSubmitInteraction, ctx : serenity::client::Context) {
     let nom_competition = match mci
         .data
         .components
@@ -157,61 +157,62 @@ pub async fn prompt_date_debut_inscription_modal(client : &MongoClient, mci : Mo
     let organisateur = mci.user.id.0.to_string();
 
 
-    let timestamp_debut_inscription = get_timestamp_from_DATE(&date_inscription.0);
-    resolver_timestamp(&timestamp_debut_inscription, &mci, &ctx, &client).await;
-    let timestamp_fin_inscription = get_timestamp_from_DATE(&date_inscription.1);
-    resolver_timestamp(&timestamp_fin_inscription, &mci, &ctx, &client).await;
-    let timestamp_debut_competition = get_timestamp_from_DATE(&date_competition.0);
-    resolver_timestamp(&timestamp_debut_competition, &mci, &ctx, &client).await;
-    let timestamp_fin_competition = get_timestamp_from_DATE(&date_competition.1);
-    resolver_timestamp(&timestamp_fin_competition, &mci, &ctx, &client).await;
+    let timestamp_debut_inscription = get_timestamp_from_date(&date_inscription.0);
+    resolver_timestamp(&timestamp_debut_inscription, &mci, &ctx).await;
+    let timestamp_fin_inscription = get_timestamp_from_date(&date_inscription.1);
+    resolver_timestamp(&timestamp_fin_inscription, &mci, &ctx).await;
+    let timestamp_debut_competition = get_timestamp_from_date(&date_competition.0);
+    resolver_timestamp(&timestamp_debut_competition, &mci, &ctx).await;
+    let timestamp_fin_competition = get_timestamp_from_date(&date_competition.1);
+    resolver_timestamp(&timestamp_fin_competition, &mci, &ctx).await;
 
-    verification_chevauchement_edition(&timestamp_debut_inscription.as_ref().unwrap(), &client, &guild, &ctx, &mci).await;
-    verification_chevauchement_edition(&timestamp_debut_competition.as_ref().unwrap(), &client, &guild, &ctx, &mci).await;
-    verification_chevauchement_edition(&timestamp_fin_inscription.as_ref().unwrap(), &client, &guild, &ctx, &mci).await;
-    verification_chevauchement_edition(&timestamp_fin_competition.as_ref().unwrap(), &client, &guild, &ctx, &mci).await;
+    let resultat = verification_chevauchement_edition(&timestamp_debut_inscription.as_ref().unwrap(), &timestamp_fin_competition.as_ref().unwrap(), &client, &guild, &ctx, &mci).await;
 
-    let collection =  client.database("RayquaBot").collection("editions");
-    let doc = doc! {
-            "organisateur" : organisateur,
-            "nom" : nom_competition.value.as_str(),
-            "guild_id": &guild.0.to_string(),
-            "date_debut_inscription": &timestamp_debut_inscription.unwrap(),
-            "date_fin_inscription": &timestamp_fin_inscription.unwrap(),
-            "date_debut_competition": &timestamp_debut_competition.unwrap(),
-            "date_fin_competition": &timestamp_fin_competition.unwrap()
-        };
-    collection.insert_one(doc, None).await.expect("Failed to insert document");
+    match resultat {
+        Ok(_) => {
+            let collection =  client.database(RAYQUABOT_DB).collection(EDITIONS_COLLECTION);
+            let doc = doc! {
+                ORGANISATEUR: organisateur,
+                NOM_EDITION : nom_competition.value.as_str(),
+                GUILD_ID    : &guild.0.to_string(),
+                DATE_DEBUT_INSCRIPTION : &timestamp_debut_inscription.unwrap(),
+                DATE_FIN_INSCRIPTION   : &timestamp_fin_inscription.unwrap(),
+                DATE_DEBUT_COMPETITION : &timestamp_debut_competition.unwrap(),
+                DATE_FIN_COMPETITION   : &timestamp_fin_competition.unwrap()
+            };
+            collection.insert_one(doc, None).await.expect("Failed to insert document");
 
-    mci.create_interaction_response(ctx, |r| {
-        r.kind(InteractionResponseType::ChannelMessageWithSource)
-            .interaction_response_data(|d| {
-                d.add_embed(
-                    CreateEmbed::default()
-                        .title("Date entrée : ")
-                        .description(format!(
-                            "dates inscriptions : \n\
-                            début : {}\n\
-                            fin : {}\n\
-                            dates compétition :\n\
-                            début : {}\n\
-                            fin : {}", date_inscription.0.to_string(), date_inscription.1.to_string(), date_competition.0.to_string(), date_competition.1.to_string())).to_owned()
-                )
+            mci.create_interaction_response(ctx, |r| {
+                r.kind(InteractionResponseType::ChannelMessageWithSource)
+                    .interaction_response_data(|d| {
+                        d.add_embed(
+                            CreateEmbed::default()
+                                .title("Nouvelle édition créée avec succès !")
+                                .description(format!(
+                                    "Les inscription démarerons le {} et se fermerons le {}.\n\
+                                    La compétition commenceras de {} et se termineras le {}."
+                                    , date_inscription.0.to_string(), date_inscription.1.to_string(), date_competition.0.to_string(), date_competition.1.to_string())).to_owned()
+                                .color(GREEN_COLOR)
+                                .to_owned()
+                        )
+                    })
             })
-    })
-        .await
-        .unwrap();
+                .await
+                .unwrap();
+        }
+        Err(_) => {}
+    }
 }
 
 fn parsing_two_dates(date : &str) -> (DATE, DATE) {
     let dates : Vec<String> = date.split("-").map(|s| s.to_string()).collect();
 
-    let date_debut = dates.get(0).unwrap();
-    let date_debut = parse_one_date(date_debut);
+    let date1 = dates.get(0).unwrap();
+    let date1 = parse_one_date(date1);
 
-    let date_fin= dates.get(1).unwrap();
-    let date_fin = parse_one_date(date_fin);
-    (date_debut, date_fin)
+    let date2= dates.get(1).unwrap();
+    let date2 = parse_one_date(date2);
+    (date1, date2)
 }
 
 fn parse_one_date(date : &str) -> DATE {
@@ -224,37 +225,24 @@ fn parse_one_date(date : &str) -> DATE {
     date
 }
 
-
-async fn verification_chevauchement_edition(timestamp : &i64, client : &MongoClient, guild_id : &GuildId, ctx : &Context, mci : &ModalSubmitInteraction) {
+async fn verification_chevauchement_edition(timestamp_debut : &i64, timestamp_fin : &i64, client : &MongoClient, guild_id : &GuildId, ctx : &Context, mci : &ModalSubmitInteraction) ->Result<(), String>{
     //todo FIXIT
-    let count = client.database("RayquaBot").collection::<Document>("edition").aggregate(
-        [
-            doc! {
-                "$match": doc! {
-                    "$and": [
-                        doc! {
-                            "date_debut_inscription": doc! {
-                                "$lt": timestamp
-                            }
-                        },
-                        doc! {
-                            "date_fin_competition": doc! {
-                                "$gt": timestamp
-                            }
-                        },
-                        doc! {
-                            "guild_id": doc! {
-                                "$eq": guild_id.0.to_string()
-                            }
-                        }
-                    ]
-                }
-            },
-        ], None).await.unwrap().count().await;
+
+    let querry = doc! {
+        GUILD_ID: &guild_id.0.to_string(),
+        "$nor": [
+            doc! { DATE_DEBUT_INSCRIPTION: doc! {"$gt": timestamp_fin}},
+            doc! { DATE_FIN_COMPETITION  : doc! {"$lt": timestamp_debut}}
+        ]
+    };
+
+    let count = client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).count_documents(querry,None).await.unwrap();
+
     if count > 0 {
         send_error(&mci, &ctx, "L'édition chevauche une édition existante !").await;
-        panic!("Chevauchement d'édition !")
+        return Err("L'édition chevauche une édition existante !".to_string());
     }
+    return Ok(());
 }
 
 async fn send_error (mci : &ModalSubmitInteraction, ctx : &Context, err : &str) {
@@ -265,7 +253,7 @@ async fn send_error (mci : &ModalSubmitInteraction, ctx : &Context, err : &str) 
                     CreateEmbed::default()
                         .title("Erreur !")
                         .description(err)
-                        .color(0xff0000)
+                        .color(RED_COLOR)
                         .to_owned()
                 )
             })
@@ -274,7 +262,7 @@ async fn send_error (mci : &ModalSubmitInteraction, ctx : &Context, err : &str) 
         .unwrap();
 }
 
-fn get_timestamp_from_DATE(date : &DATE) -> Result<i64, String> {
+fn get_timestamp_from_date(date : &DATE) -> Result<i64, String> {
     match NaiveDate::from_ymd_opt(date.annee as i32, date.mois as u32, date.jour as u32){
         Some(date) => {
             let date = date.and_hms(0, 0, 0);
@@ -285,11 +273,10 @@ fn get_timestamp_from_DATE(date : &DATE) -> Result<i64, String> {
     }
 }
 
-async fn resolver_timestamp(t : &Result<i64, String>, mci : &ModalSubmitInteraction, ctx : &Context, db : &MongoClient) {
+async fn resolver_timestamp(t : &Result<i64, String>, mci : &ModalSubmitInteraction, ctx : &Context) {
     match t {
         Err(err) => {
-            send_error( &mci, &ctx, &err).await;
-            panic!("Date invalide !")
+            send_error( &mci, &ctx, err).await;
         },
         _ => ()
     }
