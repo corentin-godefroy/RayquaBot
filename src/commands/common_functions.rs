@@ -1,9 +1,13 @@
+use std::sync::Arc;
 use serenity::builder::CreateEmbed;
 use serenity::client::Context;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::model::application::interaction::InteractionResponseType;
 use serenity::model::application::interaction::message_component::MessageComponentInteraction;
 use serenity::model::application::interaction::modal::ModalSubmitInteraction;
+use mongodb::{Client as MongoClient};
+use mongodb::bson::Document;
+use crate::doc;
 
 pub const EDITIONS_COLLECTION: &str = "editions";
 pub const RAYQUABOT_DB : &str = "RayquaBot";
@@ -74,4 +78,38 @@ pub async fn reset_global_application_command(ctx : &Context){
     for command in commands{
         ctx.http.delete_global_application_command(command.id.0).await.unwrap();
     }
+}
+
+pub async fn send_success_from_component(mci : &MessageComponentInteraction, ctx : &Context, title : &str, message : &str) {
+    mci.create_interaction_response(ctx, |r| {
+        r.kind(InteractionResponseType::ChannelMessageWithSource)
+            .interaction_response_data(|d| {
+                d.add_embed(
+                    CreateEmbed::default()
+                        .title(title)
+                        .description(message)
+                        .color(GREEN_COLOR)
+                        .to_owned()
+                )
+            })
+    })
+        .await
+        .unwrap();
+}
+
+pub async fn send_success_from_modal(mci : &ModalSubmitInteraction, ctx : &Context, title : &str, message : &str) {
+    mci.create_interaction_response(ctx, |r| {
+        r.kind(InteractionResponseType::ChannelMessageWithSource)
+            .interaction_response_data(|d| {
+                d.add_embed(
+                    CreateEmbed::default()
+                        .title(title)
+                        .description(message)
+                        .color(GREEN_COLOR)
+                        .to_owned()
+                )
+            })
+    })
+        .await
+        .unwrap();
 }

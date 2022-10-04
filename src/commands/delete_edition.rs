@@ -86,6 +86,7 @@ pub async fn delete_edition_reactor(client : &MongoClient, command : &Applicatio
 }
 
 pub async fn delete_edition_modal(client : &MongoClient, mci : MessageComponentInteraction, ctx : serenity::client::Context){
+    ctx.http.delete_message(mci.channel_id.0, mci.message.id.0).await.unwrap();
     let result = client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).delete_one(
         doc! {
             "nom_edition": mci.data.values.get(0).unwrap().as_str()
