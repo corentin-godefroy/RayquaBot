@@ -53,9 +53,9 @@ pub async fn delete_edition_reactor(client : &MongoClient, command : &Applicatio
     }
 
     if opt.is_empty() {
-        let msg = format!("Vous n'avez aucune édition en cours ou future qui puisse être supprimée.\
-        \nVous ne pouvez pas supprimer une édition qui a déjà eu lieu.\
-        \n\nPour toute demande de suppression d'édition passée, veuillez contacter le développeur à l'adresse mail **{}**", CONTACT);
+        let msg = format!("Tu n'as aucune édition en cours ou future qui puisse être supprimée.\
+        \nTu ne peux pas supprimer une édition qui a déjà eu lieu.\
+        \n\nPour toute demande de suppression d'édition passée, contacte le développeur à l'adresse mail **{}**", CONTACT);
         send_error_from_message(&com, &ctx, &msg).await;
     }
 
@@ -66,7 +66,7 @@ pub async fn delete_edition_reactor(client : &MongoClient, command : &Applicatio
                     components.create_action_row(|action_row| {
                         action_row.create_select_menu(|select_menu| {
                             select_menu.custom_id("delete_edition_modal")
-                                .placeholder("Choisissez une édition")
+                                .placeholder("Choisis une édition")
                                 .options(|options| {
                                     for option in opt {
                                         options.create_option(|select_menu_option| {
@@ -96,7 +96,7 @@ pub async fn delete_edition_modal(client : &MongoClient, mci : MessageComponentI
 
     if result.deleted_count == 0 {
         let msg = format!("Une erreur est survenue lors de la suppression de l'édition.\
-        \nVeuillez contacter le développeur à l'adresse mail **{}**", CONTACT);
+        \ncontacte le développeur à l'adresse mail **{}**", CONTACT);
         send_error_from_component(&mci, &ctx, &msg).await;
     }
     else {

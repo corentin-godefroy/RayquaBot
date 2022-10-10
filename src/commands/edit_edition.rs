@@ -37,6 +37,10 @@ pub async fn edit_edition_setup(ctx : &Context){
     })
         .await;
 }
+/*
+pub async fn edit_edition(client : &MongoClient, command : &ApplicationCommandInteraction, context : &Context){
+
+}*/
 
 pub async fn edit_edition_reactor(client : &MongoClient, command : &ApplicationCommandInteraction, context : &Context){
     let ctx = context;
@@ -140,15 +144,16 @@ pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageCompone
         .expect("Failed to send interaction response");
 
     let interaction =
-        match mci.message.await_modal_interaction(&ctx).timeout(Duration::from_secs(30)).await {
+        match mci.message.await_modal_interaction(&ctx).timeout(Duration::from_secs(60)).await {
             Some(x) => {
                 mci.message.delete(&ctx).await.unwrap();
                 x
             },
             None => {
                 mci.message.reply(&ctx, "Timed out").await.unwrap();
+                mci.delete_original_interaction_response(&ctx).await.unwrap();
                 return;
-            },
+            }
         };
 
     let date = match interaction
@@ -163,6 +168,7 @@ pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageCompone
         ActionRowComponent::InputText(it) => it,
         _ => return,
     };
+
     let date = NaiveDate::parse_from_str(&date.value, "%d/%m/%Y").unwrap();
     let date = NaiveDateTime::new(date, chrono::NaiveTime::from_hms(0, 0, 0));
     let date = date.timestamp();
@@ -187,7 +193,7 @@ pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageCompone
             None
         ).await.unwrap();
 
-        let msg = format!("La date de début des inscriptions de l'édition **{}** a bien été modifiée.", &edition);
+        let msg = format!("La date de début des inscriptions de la compétition **{}** a bien été modifiée.", &edition);
         send_success_from_modal(&interaction, &ctx, "Date modifiée avec succès", &msg).await;
     }
 }

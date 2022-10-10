@@ -42,7 +42,7 @@ impl EventHandler for HandlerDiscord {
                 unsafe {
                     match command.data.name.as_str() {
                         "ping" => ping_reactor(&command, &ctx).await,
-                        "new_edition" => new_edition_reactor(&command, &ctx).await,
+                        "new_edition" => new_edition(&command, &ctx).await,
                         "delete_edition" => delete_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
                         "edit_edition" => edit_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
                         _ => ()
@@ -50,7 +50,7 @@ impl EventHandler for HandlerDiscord {
 
             Interaction::ModalSubmit(mci) => {
                 match mci.data.custom_id.as_str() {
-                    "new_edition_modal" => prompt_edition_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
+                    "create_new_edition" => new_edition_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
                     //"edit_start_inscriptions_end" => edit_start_inscriptions_end(MONGOCLIENT.get().unwrap(), mci, ctx).await,
                     _ => ()
                 }},
