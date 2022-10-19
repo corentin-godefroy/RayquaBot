@@ -1,20 +1,26 @@
+
+use std::cmp::{max, min};
+use std::sync::Arc;
+
 use std::time::Duration;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
-use serenity::builder::{CreateEmbed};
-use serenity::model::application::interaction::InteractionResponseType;
+
+use serenity::model::application::interaction::{InteractionResponseType};
 use serenity::client::Context;
 use serenity::model::application::command::{Command, CommandOptionType};
-use mongodb::{Client as MongoClient, Client};
+use mongodb::{Client as MongoClient};
 use mongodb::bson::Document;
 use chrono;
 use chrono::{NaiveDate, NaiveDateTime};
-use mongodb::bson::Bson::DateTime;
-use serenity::futures::StreamExt;
+
+
 use serenity::model::application::component::{ActionRowComponent, InputTextStyle};
 use serenity::model::application::interaction::message_component::MessageComponentInteraction;
 use serenity::model::application::interaction::modal::ModalSubmitInteraction;
+
+
 use serenity::model::Permissions;
-use crate::doc;
+use crate::*;
 use super::common_functions::*;
 
 pub async fn edit_edition_setup(ctx : &Context){
@@ -29,17 +35,16 @@ pub async fn edit_edition_setup(ctx : &Context){
                     .description("Nom de l'édition à éditer.")
                     .kind(CommandOptionType::String)
                     .required(true)
-                    .add_string_choice("Date de début des inscriptions", "edit_start_inscriptions")
-                    .add_string_choice("Date de fin des inscriptions", "edit_end_inscriptions")
-                    .add_string_choice("Date de début de la compétition", "edit_start_competition")
-                    .add_string_choice("Date de fin de la compétition", "edit_end_competition")
+                    .add_string_choice("Date de début des inscriptions", EDIT_START_INSCRIPTIONS)
+                    .add_string_choice("Date de fin des inscriptions", EDIT_END_INSCRIPTIONS)
+                    .add_string_choice("Date de début de la compétition", EDIT_START_COMPETITION)
+                    .add_string_choice("Date de fin de la compétition", EDIT_END_COMPETITION)
             })
     })
         .await;
 }
 /*
 pub async fn edit_edition(client : &MongoClient, command : &ApplicationCommandInteraction, context : &Context){
-
 }*/
 
 pub async fn edit_edition_reactor(client : &MongoClient, command : &ApplicationCommandInteraction, context : &Context){
@@ -48,27 +53,12 @@ pub async fn edit_edition_reactor(client : &MongoClient, command : &ApplicationC
 
     let user_id = com.user.id.to_string();
 
-    let editions = client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).aggregate(
-        [doc! {
-            "$match": doc! {
-                "organisateur": user_id,
-                "date_fin_competition": doc! {
-                    "$gt": chrono::Utc::now().timestamp()
-                }
-            }
-        },
-            doc! {
-                "$project": doc! {
-                    "nom_edition": 1
-                }
-            }
-        ]
-        , None).await.unwrap().collect::<Vec<_>>().await;
+    let editions = get_editions_names(client, &user_id).await;
 
     let mut opt = Vec::new();
 
     for edition in editions {
-        let edition = edition.unwrap().get(NOM_EDITION).unwrap().as_str().unwrap().to_string();
+        let edition = edition.unwrap().get(EDITION_NAME).unwrap().as_str().unwrap().to_string();
         opt.push(edition);
     }
 
@@ -76,7 +66,7 @@ pub async fn edit_edition_reactor(client : &MongoClient, command : &ApplicationC
         let msg = format!("Vous n'avez aucune édition en cours ou future qui puisse être modifiée.\
         \nVous ne pouvez pas modifier une édition qui a déjà eu lieu.\
         \n\nPour toute demande de modification d'édition passée, veuillez contacter le développeur à l'adresse mail **{}**", CONTACT);
-        send_error_from_message(&com, &ctx, &msg).await;
+        send_error_from_command(&com, &ctx, &msg).await;
     }
 
     command.create_interaction_response(&ctx.http, |response| {
@@ -106,18 +96,44 @@ pub async fn edit_edition_reactor(client : &MongoClient, command : &ApplicationC
 
 }
 
-pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageComponentInteraction, ctx : serenity::client::Context){
+pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageComponentInteraction, ctx : serenity::client::Context, type_modif : TypeDate){
     let edition = mci.data.values[0].clone();
-    let result = client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).find_one(
-        doc! {
-            "nom_edition": &edition,
-            "organisateur": mci.user.id.to_string()
-        },
-        None
-    ).await.unwrap().unwrap();
+    let id = mci.user.id.to_string();
+    let result = get_edition_by_name(client, &edition, &id).await.unwrap();
+    let date_fin_inscription = result.get(INSCRIPTION_END_DATE).unwrap().as_i64().unwrap();
+    let date_start_competition = result.get(COMPETITION_START_DATE).unwrap().as_i64().unwrap();
+    let date_start_inscription = result.get(INSCRIPTION_START_DATE).unwrap().as_i64().unwrap();
+    let date_end_competition = result.get(COMPETITION_END_DATE).unwrap().as_i64().unwrap();
+    let date_min = min(&date_start_competition, &date_fin_inscription).clone();
+    let date_max = max(&date_start_competition, &date_fin_inscription).clone();
 
-    let date_fin_inscription = result.get("date_fin_inscription").unwrap().as_i64().unwrap();
-    let date = NaiveDateTime::from_timestamp(date_fin_inscription, 0).format("%d/%m/%Y").to_string();
+    let msg;
+    let mut type_modif_str : &str = "";
+
+    match type_modif {
+        TypeDate::StartRegistration => {
+            let date1 = NaiveDateTime::from_timestamp(date_min, 0).format("%d/%m/%Y").to_string();
+            msg = format!("JJ/MM/AAAA (< {})", date1.clone());
+            type_modif_str = INSCRIPTION_START_DATE;
+        }
+        TypeDate::EndCompetition => {
+            let date1 = NaiveDateTime::from_timestamp(date_max, 0).format("%d/%m/%Y").to_string();
+            msg = format!("JJ/MM/AAAA (> {})", date1.clone());
+            type_modif_str = COMPETITION_END_DATE;
+        }
+        _ => {
+            let date1 = NaiveDateTime::from_timestamp(date_start_inscription, 0).format("%d/%m/%Y").to_string();
+            let date2 = NaiveDateTime::from_timestamp(date_end_competition, 0).format("%d/%m/%Y").to_string();
+            msg = format!("({} <) JJ/MM/AAAA (< {})", &date1.clone(), &date2.clone());
+            match type_modif {
+                TypeDate::EndRegistration => {type_modif_str = INSCRIPTION_END_DATE;}
+                TypeDate::StartCompetition => { type_modif_str = COMPETITION_START_DATE;}
+                _ => {}
+            }
+        }
+    }
+
+    let custom_id = chrono::Utc::now().timestamp_nanos().to_string();
 
     mci.create_interaction_response(&ctx.http, |response| {
         response.kind(InteractionResponseType::Modal)
@@ -126,37 +142,39 @@ pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageCompone
                     components.create_action_row(|action_row| {
                         action_row.create_input_text(|input_text| {
                             input_text
-                                .custom_id("edit_start_inscriptions_end")
-                                .placeholder(format!("JJ/MM/AAAA (< {})", date))
+                                .custom_id(&custom_id)
+                                .placeholder(&msg)
                                 .min_length(10)
                                 .max_length(10)
                                 .required(true)
-                                .label("Date de début et de fin de la compétition.")
+                                .label(format!("Date de {}", type_modif_str ))
                                 .style(InputTextStyle::Short)
                         })
                     })
                 })
                     .title("Dates de la compétition")
-                    .custom_id("edit_start_inscriptions_end")
+                    .custom_id(&custom_id)
             )
     })
         .await
         .expect("Failed to send interaction response");
 
-    let interaction =
-        match mci.message.await_modal_interaction(&ctx).timeout(Duration::from_secs(60)).await {
-            Some(x) => {
-                mci.message.delete(&ctx).await.unwrap();
-                x
-            },
-            None => {
-                mci.message.reply(&ctx, "Timed out").await.unwrap();
-                mci.delete_original_interaction_response(&ctx).await.unwrap();
-                return;
-            }
-        };
 
-    let date = match interaction
+    let interaction = match mci.message.await_modal_interaction(&ctx).timeout(Duration::from_secs(60)).author_id(mci.user.id).channel_id(mci.channel_id).await {
+        Some(x) => {
+            mci.delete_original_interaction_response(&ctx.http).await.expect("Failed to delete interaction response");
+            x
+        },
+        None => {
+            mci.message.reply(&ctx, "Timed out").await.unwrap();
+            mci.delete_original_interaction_response(&ctx).await.unwrap();
+            return;
+        }
+    };
+
+
+
+    let new_date = match interaction
         .data
         .components
         .get(0)
@@ -165,35 +183,63 @@ pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageCompone
         .get(0)
         .unwrap()
     {
-        ActionRowComponent::InputText(it) => it,
+        ActionRowComponent::InputText(it) => it.value.clone(),
         _ => return,
     };
 
-    let date = NaiveDate::parse_from_str(&date.value, "%d/%m/%Y").unwrap();
-    let date = NaiveDateTime::new(date, chrono::NaiveTime::from_hms(0, 0, 0));
-    let date = date.timestamp();
+    match type_modif {
+        TypeDate::StartRegistration => {
+            if new_date.to_string() > date_min.to_string() {
+                let msg = format!("La date de début des inscriptions ne peut pas être supérieure à la date de fin des inscriptions ou de début de la compétition.\
+                    \n\nRéessaye en entrant une date inférieure à **{}**", NaiveDateTime::from_timestamp(date_min, 0).format("%d/%m/%Y").to_string());
+                send_error_from_modal(&interaction, &ctx, &msg).await;
+                return;
+            }
+        }
+        TypeDate::EndCompetition => {
+            if new_date.to_string() > date_max.to_string() {
+                let msg = format!("La date de début des inscriptions ne peut pas être supérieure à la date de fin des inscriptions ou de début de la compétition.\
+                    \n\nRéessaye en entrant une date inférieure à **{}**", NaiveDateTime::from_timestamp(date_min, 0).format("%d/%m/%Y").to_string());
+                send_error_from_modal(&interaction, &ctx, &msg).await;
+                return;
+            }
+        }
+        TypeDate::EndRegistration => {
+            if new_date.to_string() > date_start_inscription.to_string() && new_date.to_string() < date_end_competition.to_string() {
+                let msg = format!("La date de fin des inscriptions ne peut pas être inférieure à la date de début des inscriptions.\
+                    \n\nRéessaye en entrant une date supérieure à **{}**", NaiveDateTime::from_timestamp(date_start_inscription, 0).format("%d/%m/%Y").to_string());
+                send_error_from_modal(&interaction, &ctx, &msg).await;
+                return;
+            }
+        }
+        TypeDate::StartCompetition => {
+            if new_date.to_string() > date_start_inscription.to_string()  && new_date.to_string() < date_end_competition.to_string(){
+                let msg = format!("La date de début des inscriptions ne peut pas être supérieure à la date de fin des inscriptions.\
+                    \n\nRéessaye en entrant une date inférieure à **{}**", NaiveDateTime::from_timestamp(date_end_competition, 0).format("%d/%m/%Y").to_string());
+                send_error_from_modal(&interaction, &ctx, &msg).await;
+                return;
+            }
+        }
+    }
 
-    let date_fin_inscription = result.get("date_fin_inscription").unwrap().as_i64().unwrap();
+    let date = NaiveDate::parse_from_str(&new_date, "%d/%m/%Y").unwrap().and_hms_micro(0, 0, 0, 0).timestamp();
+    update_date(&ctx, &interaction, &client, &type_modif_str, &date, &edition).await;
+}
 
-    if date_fin_inscription < date {
-        let msg = format!("La date de début des inscriptions ne peut pas être supérieure à la date de fin des inscriptions.\
-        \n\nVeuillez réessayer en entrant une date inférieure à **{}**", NaiveDateTime::from_timestamp(date_fin_inscription, 0).format("%d/%m/%Y").to_string());
-        send_error_from_modal(&interaction, &ctx, &msg).await;
-    } else {
-        client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).update_one(
-            doc! {
-                "nom_edition": &edition,
-                "organisateur": mci.user.id.to_string()
+async fn update_date(ctx: &Context, mci: &Arc<ModalSubmitInteraction>, client : &MongoClient, type_modif: &str, date: &i64, edition : &str) {
+    client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).update_one(
+        doc! {
+                EDITION_NAME: &edition,
+                ORGANISATOR: mci.user.id.to_string()
             },
-            doc! {
+        doc! {
                 "$set": doc! {
-                    "date_debut_inscription": date
+                    type_modif: date
                 }
             },
-            None
-        ).await.unwrap();
+        None
+    ).await.unwrap();
 
-        let msg = format!("La date de début des inscriptions de la compétition **{}** a bien été modifiée.", &edition);
-        send_success_from_modal(&interaction, &ctx, "Date modifiée avec succès", &msg).await;
-    }
+    let msg = format!("La date de début des inscriptions de la compétition **{}** a bien été modifiée.", &edition);
+    send_success_from_modal(&mci, &ctx, "Date modifiée avec succès", &msg).await;
 }

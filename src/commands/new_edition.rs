@@ -1,39 +1,27 @@
-use std::borrow::Borrow;
-use std::sync::Arc;
-use std::time::Duration;
+
+
+
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
-use serenity::builder::{CreateActionRow, CreateComponents, CreateEmbed, CreateInputText};
+use serenity::builder::{CreateEmbed};
 use serenity::model::application::component::ActionRowComponent;
 use serenity::model::application::interaction::InteractionResponseType;
 use serenity::model::application::interaction::modal::ModalSubmitInteraction;
 use serenity::client::Context;
 use serenity::model::application::command::{Command};
 use mongodb::{Client as MongoClient};
-use mongodb::bson::{bson, Document};
+use mongodb::bson::{Document};
 use chrono;
-use chrono::{DateTime, NaiveDate, NaiveDateTime};
-use serenity::futures::future::err;
-//use mongodb::error::ErrorKind::Command as cmd;
+use chrono::{NaiveDate, NaiveDateTime};
+
 
 use serenity::model::application::component::InputTextStyle;
-use serenity::model::channel::Message;
+
 use serenity::model::id::GuildId;
 use serenity::model::Permissions;
-use crate::commands::common_functions::{send_error_from_component, send_error_from_modal};
+use crate::commands::common_functions::{send_error_from_modal};
+use crate::commands::constants::*;
 
-use crate::doc;
-
-const EDITIONS_COLLECTION: &str = "editions";
-const RAYQUABOT_DB : &str = "RayquaBot";
-const DATE_DEBUT_INSCRIPTION : &str = "date_debut_inscription";
-const DATE_FIN_INSCRIPTION : &str = "date_fin_inscription";
-const DATE_DEBUT_COMPETITION : &str = "date_debut_competition";
-const DATE_FIN_COMPETITION : &str = "date_fin_competition";
-const GUILD_ID : &str = "guild_id";
-const NOM_EDITION : &str = "nom_edition";
-const ORGANISATEUR : &str = "organisateur";
-const RED_COLOR : i32 = 0xff0000;
-const GREEN_COLOR : i32 = 0x00ff00;
+use crate::{doc, ORGANISATOR};
 
 struct DATE {
     jour : u8,
@@ -68,7 +56,6 @@ pub async fn new_edition_setup(ctx: &Context) {
 }
 
 pub async fn new_edition(command : &ApplicationCommandInteraction, ctx : &Context) {
-
     command.create_interaction_response(&ctx.http, |response| {
         response.kind(InteractionResponseType::Modal)
             .interaction_response_data(|message|
@@ -77,7 +64,7 @@ pub async fn new_edition(command : &ApplicationCommandInteraction, ctx : &Contex
                         .create_action_row(|action_row| {
                             action_row.create_input_text(|input_text| {
                                 input_text
-                                    .custom_id("nom")
+                                    .custom_id(EDITION_NAME)
                                     .placeholder("Le couple nom/numéro doit être différent des anciennes éditions")
                                     .min_length(4)
                                     .max_length(50)
@@ -89,7 +76,7 @@ pub async fn new_edition(command : &ApplicationCommandInteraction, ctx : &Contex
                         .create_action_row(|action_row| {
                             action_row.create_input_text(|input_text| {
                                 input_text
-                                    .custom_id("inscription")
+                                    .custom_id(CREATE_EDITION_INSCRIPTION_ID)
                                     .placeholder("JJ/MM/AAAA-JJ/MM/AAAA")
                                     .min_length(21)
                                     .max_length(21)
@@ -101,7 +88,7 @@ pub async fn new_edition(command : &ApplicationCommandInteraction, ctx : &Contex
                         .create_action_row(|action_row| {
                             action_row.create_input_text(|input_text| {
                                 input_text
-                                    .custom_id("competition")
+                                    .custom_id(CREATE_EDITION_COMPETITION_ID)
                                     .placeholder("JJ/MM/AAAA-JJ/MM/AAAA")
                                     .min_length(21)
                                     .max_length(21)
@@ -112,13 +99,11 @@ pub async fn new_edition(command : &ApplicationCommandInteraction, ctx : &Contex
                         })
                 })
                     .title("Dates de la compétition")
-                    .custom_id("create_new_edition")
+                    .custom_id(CREATE_NEW_EDITION)
             )
     })
         .await
         .expect("Failed to send interaction response");
-
-
 }
 
 pub async fn new_edition_modal(client : &MongoClient, mci : ModalSubmitInteraction, ctx : serenity::client::Context) {
@@ -161,42 +146,32 @@ pub async fn new_edition_modal(client : &MongoClient, mci : ModalSubmitInteracti
         _ => return,
     };
 
-    let mut date_inscription = parsing_two_dates(date_inscription.value.as_str());
-    let date_competition = parsing_two_dates(date_competition.value.as_str());
+    let date_inscription = parse_two_dates(date_inscription.value.as_str());
+    let date_competition = parse_two_dates(date_competition.value.as_str());
     let guild = mci.guild_id.unwrap();
     let organisateur = mci.user.id.0.to_string();
 
-    match date_inscription {
-        Ok(ref dates) => { let date_inscription = &dates;}
-        Err(ref e) => { send_error_from_modal(&mci, &ctx, &e).await;
-            return;
-        }
-    }
-    match date_competition {
-        Ok(ref dates) => { let date_competition = &dates;}
-        Err(ref e) => { send_error_from_modal(&mci, &ctx, &e).await;
-            return;
-        }
-    }
+    let date_inscription = match_dates(date_inscription, &mci, &ctx).await.unwrap();
+    let date_competition = match_dates(date_competition, &mci, &ctx).await.unwrap();
 
-    let timestamp_debut_inscription = get_timestamp_from_date(&date_inscription.as_ref().unwrap().0,  &mci, &ctx).await;
-    let timestamp_fin_inscription = get_timestamp_from_date(&date_inscription.as_ref().unwrap().1, &mci, &ctx).await;
-    let timestamp_debut_competition = get_timestamp_from_date(&date_competition.as_ref().unwrap().0, &mci, &ctx).await;
-    let timestamp_fin_competition = get_timestamp_from_date(&date_competition.as_ref().unwrap().1, &mci, &ctx).await;
+    let timestamp_debut_inscription = get_timestamp_from_date(&date_inscription.0,  &mci, &ctx).await;
+    let timestamp_fin_inscription = get_timestamp_from_date(&date_inscription.1, &mci, &ctx).await;
+    let timestamp_debut_competition = get_timestamp_from_date(&date_competition.0, &mci, &ctx).await;
+    let timestamp_fin_competition = get_timestamp_from_date(&date_competition.1, &mci, &ctx).await;
 
-    let resultat = verification_chevauchement_edition(&timestamp_debut_inscription, &timestamp_fin_competition, &client, &guild, &ctx, &mci).await;
+    let resultat = edition_overlap_check(&timestamp_debut_inscription, &timestamp_fin_competition, &client, &guild).await;
 
     match resultat {
         Ok(_) => {
             let collection =  client.database(RAYQUABOT_DB).collection(EDITIONS_COLLECTION);
             let doc = doc! {
-                ORGANISATEUR: organisateur,
-                NOM_EDITION : nom_competition.value.as_str(),
+                ORGANISATOR: organisateur,
+                EDITION_NAME : nom_competition.value.as_str(),
                 GUILD_ID    : &guild.0.to_string(),
-                DATE_DEBUT_INSCRIPTION : &timestamp_debut_inscription,
-                DATE_FIN_INSCRIPTION   : &timestamp_fin_inscription,
-                DATE_DEBUT_COMPETITION : &timestamp_debut_competition,
-                DATE_FIN_COMPETITION   : &timestamp_fin_competition
+                INSCRIPTION_START_DATE : &timestamp_debut_inscription,
+                INSCRIPTION_END_DATE   : &timestamp_fin_inscription,
+                COMPETITION_START_DATE : &timestamp_debut_competition,
+                COMPETITION_END_DATE   : &timestamp_fin_competition
             };
             collection.insert_one(doc, None).await.expect("Failed to insert document");
 
@@ -226,7 +201,17 @@ pub async fn new_edition_modal(client : &MongoClient, mci : ModalSubmitInteracti
     }
 }
 
-fn parsing_two_dates(date : &str) -> Result<(DATE, DATE), String> {
+async fn match_dates(date : Result<(DATE, DATE), String>, mci : &ModalSubmitInteraction, ctx: &Context) -> Result<(DATE, DATE), String> {
+    return match date {
+        Ok(ref dates) => { Ok(dates.to_owned()) }
+        Err(ref e) => {
+            send_error_from_modal(&mci, &ctx, &e).await;
+            Err(e.to_string())
+        }
+    }
+}
+
+fn parse_two_dates(date : &str) -> Result<(DATE, DATE), String> {
     let dates : Vec<String> = date.split("-").map(|s| s.to_string()).collect();
     if dates.len() != 2 { return Err(format!("les dates {} sont mal écrites. Respecte bien le format JJ/MM/AAAA-JJ/MM/AAAA", date).to_string())}
 
@@ -250,7 +235,7 @@ fn parse_one_date(date : &str) -> Result<DATE, String> {
     Ok(date)
 }
 
-async fn verification_chevauchement_edition(timestamp_debut : &i64, timestamp_fin : &i64, client : &MongoClient, guild_id : &GuildId, ctx : &Context, mci : &ModalSubmitInteraction) ->Result<(), String>{
+async fn edition_overlap_check(timestamp_debut : &i64, timestamp_fin : &i64, client : &MongoClient, guild_id : &GuildId) ->Result<(), String>{
     if timestamp_debut.to_owned() == 0 || timestamp_fin.to_owned() == 0 {
         return if timestamp_fin.to_owned() == 0 {
             Err("la date de fin n'est pas valide !".to_string())
@@ -265,8 +250,8 @@ async fn verification_chevauchement_edition(timestamp_debut : &i64, timestamp_fi
     let querry = doc! {
         GUILD_ID: &guild_id.0.to_string(),
         "$nor": [
-            doc! { DATE_DEBUT_INSCRIPTION: doc! {"$gt": timestamp_fin}},
-            doc! { DATE_FIN_COMPETITION  : doc! {"$lt": timestamp_debut}}
+            doc! { INSCRIPTION_START_DATE: doc! {"$gt": timestamp_fin}},
+            doc! { INSCRIPTION_END_DATE  : doc! {"$lt": timestamp_debut}}
         ]
     };
 
@@ -286,7 +271,7 @@ async fn get_timestamp_from_date(date : &DATE, msi: &ModalSubmitInteraction, ctx
             timestamp
         },
         None => {
-            send_error_from_modal(&msi, &ctx, &format!("La date \"{}\" entrée est invalide", date.to_string())).await;
+             send_error_from_modal(&msi, &ctx, &format!("La date \"{}\" entrée est invalide", &date.to_string() ).as_str()).await;
             return 0
         }
     }

@@ -1,10 +1,7 @@
 extern crate core;
-
 pub mod commands;
 use crate::commands::ping::*;
-
 use std::borrow::Borrow;
-
 use serenity::{
     async_trait,
     model::{gateway::Ready},
@@ -16,10 +13,12 @@ use serenity::framework::StandardFramework;
 use serenity::model::application::interaction::{Interaction};
 use mongodb::{Client as MongoClient};
 use once_cell::sync::OnceCell;
-use crate::commands::common_functions::reset_global_application_command;
 use crate::commands::new_edition::*;
 use crate::commands::delete_edition::*;
 use crate::commands::edit_edition::*;
+use crate::commands::constants::*;
+use crate::commands::get_edition::{get_edition_end, get_edition_reactor, get_edition_setup};
+use crate::TypeDate::{EndCompetition, EndRegistration, StartCompetition, StartRegistration};
 
 //global variable for mongodb client
 static MONGOCLIENT: OnceCell<MongoClient> = OnceCell::new();
@@ -33,35 +32,38 @@ impl EventHandler for HandlerDiscord {
         new_edition_setup(ctx.borrow()).await;
         delete_edition_setup(ctx.borrow()).await;
         edit_edition_setup(ctx.borrow()).await;
+        get_edition_setup(ctx.borrow()).await;
         println!("{} is connected!", ready.user.name);
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction{
             Interaction::ApplicationCommand(command) => {
-                unsafe {
-                    match command.data.name.as_str() {
-                        "ping" => ping_reactor(&command, &ctx).await,
-                        "new_edition" => new_edition(&command, &ctx).await,
-                        "delete_edition" => delete_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
-                        "edit_edition" => edit_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
-                        _ => ()
-                    }}},
+
+                match command.data.name.as_str() {
+                    PING => ping_reactor(&command, &ctx).await,
+                    NEW_EDITION => new_edition(&command, &ctx).await,
+                    DELETE_EDITION => delete_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
+                    EDIT_EDITION => edit_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
+                    GET_EDITION => get_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
+                    _ => ()
+                }},
 
             Interaction::ModalSubmit(mci) => {
                 match mci.data.custom_id.as_str() {
-                    "create_new_edition" => new_edition_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
-                    //"edit_start_inscriptions_end" => edit_start_inscriptions_end(MONGOCLIENT.get().unwrap(), mci, ctx).await,
+                    CREATE_NEW_EDITION => new_edition_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
+                    //EDIT_START_EDITION_END => edit_start_inscriptions_end(MONGOCLIENT.get().unwrap(), mci, ctx).await,
                     _ => ()
                 }},
 
             Interaction::MessageComponent(mci) => {
                 match mci.data.custom_id.as_str() {
-                    "delete_edition_modal" => delete_edition_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
-                    "edit_start_inscriptions" => edit_start_inscriptions(MONGOCLIENT.get().unwrap(), mci, ctx).await,
-                    "edit_end_inscriptions" => println!("ok : edit_end_inscriptions"),
-                    "edit_start_competition" => println!("ok : edit_start_competition"),
-                    "edit_end_competition" => println!("ok : edit_end_competition"),
+                    DELETE_EDITION_MODAL => delete_edition_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
+                    EDIT_START_INSCRIPTIONS => edit_start_inscriptions(MONGOCLIENT.get().unwrap(), mci, ctx, StartRegistration).await,
+                    EDIT_END_INSCRIPTIONS => edit_start_inscriptions(MONGOCLIENT.get().unwrap(), mci, ctx, EndRegistration).await,
+                    EDIT_START_COMPETITION => edit_start_inscriptions(MONGOCLIENT.get().unwrap(), mci, ctx, StartCompetition).await,
+                    EDIT_END_COMPETITION => edit_start_inscriptions(MONGOCLIENT.get().unwrap(), mci, ctx, EndCompetition).await,
+                    EDITION_SELECT => get_edition_end(MONGOCLIENT.get().unwrap(), mci, ctx).await,
                     _ => ()
                 }},
 

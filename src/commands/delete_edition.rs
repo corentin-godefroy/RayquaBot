@@ -11,12 +11,14 @@ use serenity::model::application::interaction::message_component::MessageCompone
 use serenity::model::Permissions;
 use crate::doc;
 use super::common_functions::*;
+use super::constants::*;
 
 pub async fn delete_edition_setup(ctx: &Context) {
     let _ = Command::create_global_application_command(&ctx.http, |command| {
         command
-            .name("delete_edition")
-            .description("Supprime une édition.")
+            .name(DELETE_EDITION)
+            .description("Delete an existing edition on this server created by you")
+            .description_localized("fr", "Supprime une édition que tu as créé sur ce serveur.")
             .default_member_permissions(Permissions::ADMINISTRATOR)
     })
         .await;
@@ -31,15 +33,15 @@ pub async fn delete_edition_reactor(client : &MongoClient, command : &Applicatio
     let editions = client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).aggregate(
         [doc! {
             "$match": doc! {
-                "organisateur": user_id,
-                "date_fin_competition": doc! {
+                ORGANISATOR: user_id,
+                COMPETITION_END_DATE: doc! {
                     "$gt": chrono::Utc::now().timestamp()
                 }
             }
         },
             doc! {
                 "$project": doc! {
-                    "nom_edition": 1
+                    EDITION_NAME: 1
                 }
             }
         ]
@@ -48,15 +50,15 @@ pub async fn delete_edition_reactor(client : &MongoClient, command : &Applicatio
     let mut opt = Vec::new();
 
     for edition in editions {
-        let edition = edition.unwrap().get(NOM_EDITION).unwrap().as_str().unwrap().to_string();
+        let edition = edition.unwrap().get(EDITION_NAME).unwrap().as_str().unwrap().to_string();
         opt.push(edition);
     }
 
     if opt.is_empty() {
-        let msg = format!("Tu n'as aucune édition en cours ou future qui puisse être supprimée.\
-        \nTu ne peux pas supprimer une édition qui a déjà eu lieu.\
+        let msg = format!("Tu n'as aucune édition en cours ou future qui puisse être supprimée,\
+        \net tu ne peux pas supprimer une édition qui a déjà eu lieu.\
         \n\nPour toute demande de suppression d'édition passée, contacte le développeur à l'adresse mail **{}**", CONTACT);
-        send_error_from_message(&com, &ctx, &msg).await;
+        send_error_from_command(&com, &ctx, &msg).await;
     }
 
     command.create_interaction_response(&ctx.http, |response| {
@@ -65,7 +67,7 @@ pub async fn delete_edition_reactor(client : &MongoClient, command : &Applicatio
                 message.components(|components| {
                     components.create_action_row(|action_row| {
                         action_row.create_select_menu(|select_menu| {
-                            select_menu.custom_id("delete_edition_modal")
+                            select_menu.custom_id(DELETE_EDITION_MODAL)
                                 .placeholder("Choisis une édition")
                                 .options(|options| {
                                     for option in opt {
@@ -89,7 +91,7 @@ pub async fn delete_edition_modal(client : &MongoClient, mci : MessageComponentI
     ctx.http.delete_message(mci.channel_id.0, mci.message.id.0).await.unwrap();
     let result = client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).delete_one(
         doc! {
-            "nom_edition": mci.data.values.get(0).unwrap().as_str()
+            EDITION_NAME: mci.data.values.get(0).unwrap().as_str()
         },
         None
     ).await.unwrap();
@@ -105,7 +107,7 @@ pub async fn delete_edition_modal(client : &MongoClient, mci : MessageComponentI
                 .interaction_response_data(|d| {
                     d.add_embed(
                         CreateEmbed::default()
-                            .title("Edition supprimée")
+                            .title("delete_edition :")
                             .description("L'édition à été supprimée avec succès !").to_owned()
                             .color(GREEN_COLOR)
                             .to_owned()
@@ -116,4 +118,3 @@ pub async fn delete_edition_modal(client : &MongoClient, mci : MessageComponentI
             .unwrap();
     }
 }
-
