@@ -1,9 +1,7 @@
 
-
-
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
-use serenity::builder::{CreateEmbed};
-use serenity::model::application::component::ActionRowComponent;
+
+use serenity::model::application::component::{ActionRowComponent};
 use serenity::model::application::interaction::InteractionResponseType;
 use serenity::model::application::interaction::modal::ModalSubmitInteraction;
 use serenity::client::Context;
@@ -14,13 +12,18 @@ use chrono;
 use chrono::{NaiveDate, NaiveDateTime};
 
 
+
 use serenity::model::application::component::InputTextStyle;
+use serenity::model::channel::{ChannelType, GuildChannel, PermissionOverwrite, PermissionOverwriteType};
+use serenity::model::channel::ChannelType::{Text, Voice};
 
-use serenity::model::id::GuildId;
+use serenity::model::guild::Role;
+use serenity::model::id::{GuildId};
 use serenity::model::Permissions;
-use crate::commands::common_functions::{send_error_from_modal};
+use tokio::join;
+use TypeDate::*;
+use crate::commands::common_functions::{send_error_from_component, send_error_from_modal};
 use crate::commands::constants::*;
-
 use crate::{doc, ORGANISATOR};
 
 struct DATE {
@@ -151,54 +154,301 @@ pub async fn new_edition_modal(client : &MongoClient, mci : ModalSubmitInteracti
     let guild = mci.guild_id.unwrap();
     let organisateur = mci.user.id.0.to_string();
 
-    let date_inscription = match_dates(date_inscription, &mci, &ctx).await.unwrap();
-    let date_competition = match_dates(date_competition, &mci, &ctx).await.unwrap();
+    let date_ins = match_dates(date_inscription, &mci, &ctx).await.unwrap();
+    let date_comp = match_dates(date_competition, &mci, &ctx).await.unwrap();
 
-    let timestamp_debut_inscription = get_timestamp_from_date(&date_inscription.0,  &mci, &ctx).await;
-    let timestamp_fin_inscription = get_timestamp_from_date(&date_inscription.1, &mci, &ctx).await;
-    let timestamp_debut_competition = get_timestamp_from_date(&date_competition.0, &mci, &ctx).await;
-    let timestamp_fin_competition = get_timestamp_from_date(&date_competition.1, &mci, &ctx).await;
+    let timestamp_debut_inscription = get_timestamp_from_date(&date_ins.0 ,  &mci, &ctx);
+    let timestamp_fin_inscription   = get_timestamp_from_date(&date_ins.1 , &mci, &ctx);
+    let timestamp_debut_competition = get_timestamp_from_date(&date_comp.0, &mci, &ctx);
+    let timestamp_fin_competition   = get_timestamp_from_date(&date_comp.1, &mci, &ctx);
 
-    let resultat = edition_overlap_check(&timestamp_debut_inscription, &timestamp_fin_competition, &client, &guild).await;
+    let timestamps = join!(timestamp_debut_inscription, timestamp_fin_inscription, timestamp_debut_competition, timestamp_fin_competition);
+
+    if timestamps.3 < chrono::Utc::now().timestamp() {
+        send_error_from_modal(&mci, &ctx, "Tu ne peut pas ajouter d'édition passée.").await;
+        return;
+    }
+
+    let resultat = edition_overlap_check(&timestamps.0, &timestamps.3, &client, &guild).await;
 
     match resultat {
         Ok(_) => {
             let collection =  client.database(RAYQUABOT_DB).collection(EDITIONS_COLLECTION);
-            let doc = doc! {
-                ORGANISATOR: organisateur,
-                EDITION_NAME : nom_competition.value.as_str(),
-                GUILD_ID    : &guild.0.to_string(),
-                INSCRIPTION_START_DATE : &timestamp_debut_inscription,
-                INSCRIPTION_END_DATE   : &timestamp_fin_inscription,
-                COMPETITION_START_DATE : &timestamp_debut_competition,
-                COMPETITION_END_DATE   : &timestamp_fin_competition
-            };
-            collection.insert_one(doc, None).await.expect("Failed to insert document");
 
-            mci.create_interaction_response(ctx, |r| {
-                r.kind(InteractionResponseType::ChannelMessageWithSource)
-                    .interaction_response_data(|d| {
-                        d.add_embed(
-                            CreateEmbed::default()
-                                .title(format!("Nouvelle compétition {} créée avec succès !", nom_competition.value.as_str()))
-                                .description(format!(
-                                    "Les inscriptions démarerons le {}\net se fermerons le {}.\n\
-                                    La compétition commenceras de {}\net se termineras le {}.",
-                                    NaiveDateTime::from_timestamp(timestamp_debut_inscription.to_owned(), 0).format("%B %e %Y"),
-                                    NaiveDateTime::from_timestamp(timestamp_fin_inscription.to_owned(), 0).format("%B %e %Y"),
-                                    NaiveDateTime::from_timestamp(timestamp_debut_competition.to_owned(), 0).format("%B %e %Y"),
-                                    NaiveDateTime::from_timestamp(timestamp_fin_competition.to_owned(), 0).format("%B %e %Y"),
-                                )).to_owned()
+            let already_exist = collection.find_one(
+                doc! {
+                ORGANISATOR: mci.user.id.0.to_string(),
+                EDITION_NAME: doc! {
+                        "$eq": nom_competition.value.as_str()
+                    }
+                }, None
+            ).await.unwrap();
+
+            if already_exist.is_some() {
+                send_error_from_modal(&mci, &ctx, "Une edition porte déjà ce nom.").await;
+                return;
+            }
+
+            //TODO setup les permissions pour les catégories
+            //     creer la catégorie gimmik
+            //     Setup les commandes d'inscriptions et de création d'équipes et de modération dans les salons correspondant !!!!
+            //     Setup les probas et temps par défaut
+
+            //setup roles
+            let admin_role = create_admin_role(&ctx, &mci);
+            let host_role = create_host_role(&ctx, &mci);
+            let inscrit_role = create_inscrit_role(&ctx, &mci);
+            let roles : (Role, Role, Role) = join!(admin_role, host_role, inscrit_role);
+
+            //setup channels et catégories
+            let host_cat = create_host_category(&ctx, &mci);
+            let edition_cat = create_edition_category(&ctx, &mci, &nom_competition.value, &roles.2);
+            let categories = join!(host_cat, edition_cat);
+
+            //enregisterement infos dan la bdd
+            let doc = doc! {
+                ORGANISATOR  : organisateur,
+                EDITION_NAME : nom_competition.value.as_str(),
+                GUILD_ID     : &guild.0.to_string(),
+                INSCRIPTION_START_DATE : &timestamps.0,
+                INSCRIPTION_END_DATE   : &timestamps.1,
+                COMPETITION_START_DATE : &timestamps.2,
+                COMPETITION_END_DATE   : &timestamps.3
+            };
+            let mut edition_result = collection.insert_one(doc, None).await.unwrap();
+
+            let discord_info = doc! {
+                EDITION_FILE    : &edition_result.inserted_id.as_object_id(),
+                ADMIN_ROLE_ID   : &roles.0.id.0.to_string(),
+                HOST_ROLE_ID    : &roles.1.id.0.to_string(),
+                INSCRIT_ROLE_ID : &roles.2.id.0.to_string(),
+                MODERRATION_CATEGORY_ID : &categories.0.id.to_string(),
+                EDITION_CATEGORY_ID     : &categories.1.id.to_string()
+            };
+            client.database(RAYQUABOT_DB).collection(DISCORD_INFO_COLLECTION).insert_one(discord_info, None).await.expect(format!("Erreur a l'insertion des informations discord pour l'édition {}", &nom_competition.value).as_str());
+
+
+            mci.create_interaction_response(&ctx.http, |response| {
+                response.kind(InteractionResponseType::ChannelMessageWithSource)
+                    .interaction_response_data(|message|
+                        message.embed(|embed| {
+                            embed.title(&nom_competition.value.to_string())
+                                .description(format!("Voici les informations de l'édition {}", &nom_competition.value.to_string()))
+                                .field("Date de début des inscriptions" , &format!("{}", NaiveDateTime::from_timestamp(timestamps.0, 0).format("%d/%m/%Y")), false)
+                                .field("Date de fin des inscriptions"   , &format!("{}", NaiveDateTime::from_timestamp(timestamps.1, 0).format("%d/%m/%Y")), false)
+                                .field("Date de début de la compétition", &format!("{}", NaiveDateTime::from_timestamp(timestamps.2, 0).format("%d/%m/%Y")), false)
+                                .field("Date de fin de la compétition"  , &format!("{}", NaiveDateTime::from_timestamp(timestamps.3, 0).format("%d/%m/%Y")), false)
+                                .field("Que faire ensuite ?",
+                                       "- Modifier les valeurs de probabilité en faisant \"/edit_methode\"\n\
+                                       - Modifier les valeurs de temps en faisant \"/edit_time\"\n",
+                                false
+                                )
                                 .color(GREEN_COLOR)
-                                .to_owned()
-                        )
-                    })
+                        })
+                    )
             })
                 .await
-                .unwrap();
+                .expect("Failed to send inteaction response");
+
+
+
+
+
         }
         Err(e) => send_error_from_modal(&mci, &ctx, &e).await
     }
+}
+
+async fn find_role_by_name(ctx  : &Context, mci : &ModalSubmitInteraction, name : &str) -> Result<Role, bool> {
+    let roles = mci.guild_id.unwrap().roles(&ctx).await.unwrap();
+    for role in roles {
+        if role.1.name == name{
+            return Ok(role.1);
+        }
+    }
+    return Err(false)
+}
+
+async fn find_channel_by_name(ctx : &Context, mci : &ModalSubmitInteraction, name : &str) -> Result<GuildChannel, bool> {
+    let channels = mci.guild_id.unwrap().channels(&ctx).await.unwrap();
+    for channel in channels {
+        if channel.1.name.eq(&name) {
+            return Ok(channel.1);
+        }
+    }
+    Err(false)
+}
+
+async fn create_admin_role(ctx  : &Context, mci : &ModalSubmitInteraction) -> Role {
+    let found = find_role_by_name(&ctx, &mci, ADMIN_ROLE_NAME).await;
+    if found.is_err() {
+        let role = mci.guild_id.unwrap().create_role(&ctx, |role| {
+            role.name(ADMIN_ROLE_NAME)
+                .colour(RED_COLOR as u64)
+                .hoist(true)
+                .position(0)
+                .mentionable(true)
+                .permissions(Permissions::ADMINISTRATOR)
+        }).await.unwrap();
+        return role;
+    }
+    return found.unwrap()
+}
+
+async fn create_host_role(ctx  : &Context, mci : &ModalSubmitInteraction) -> Role {
+    let found = find_role_by_name(&ctx, &mci, HOST_ROLE_NAME).await;
+    if found.is_err() {
+        let role = mci.guild_id.unwrap().create_role(&ctx, |role|{
+            role.name(HOST_ROLE_NAME)
+                .colour(0xff8000) //orange
+                .hoist(true)
+                .position(0)
+                .mentionable(true)
+                .permissions(
+                    Permissions::MANAGE_NICKNAMES |
+                        Permissions::DEAFEN_MEMBERS |
+                        Permissions::MANAGE_MESSAGES |
+                        Permissions::VIEW_CHANNEL |
+                        Permissions::KICK_MEMBERS |
+                        Permissions::MENTION_EVERYONE |
+                        Permissions::MUTE_MEMBERS |
+                        Permissions::MOVE_MEMBERS |
+                        Permissions::MODERATE_MEMBERS |
+                        Permissions::READ_MESSAGE_HISTORY |
+                        Permissions::CONNECT |
+                        Permissions::SPEAK |
+                        Permissions::STREAM
+                )
+        }).await.unwrap();
+        return role;
+    }
+    found.unwrap()
+}
+
+async fn create_inscrit_role(ctx  : &Context, mci : &ModalSubmitInteraction) -> Role {
+    let found = find_role_by_name(&ctx, &mci, INSCRIT_ROLE_NAME).await;
+    if found.is_err() {
+        let role = mci.guild_id.unwrap().create_role(&ctx, |role|{
+            role.name(INSCRIT_ROLE_NAME)
+                .colour(0x5E9A78)
+                .hoist(true)
+                .position(0)
+                .mentionable(true)
+                .permissions(
+                    Permissions::empty()
+                )
+        }).await.unwrap();
+        return role;
+    }
+    found.unwrap()
+}
+
+async fn create_host_category(ctx  : &Context, mci : &ModalSubmitInteraction) -> GuildChannel {
+    let res = find_channel_by_name(&ctx, &mci, MODERATION_CATEGORY_NAME).await;
+
+    if res.is_err() {
+        let everyone_role = find_role_by_name(&ctx, &mci, EVERYONE_ROLE_NAME);
+        let host_role = find_role_by_name(&ctx, &mci, HOST_ROLE_NAME);
+        let (everyone_role, host_role) = join!(everyone_role, host_role);
+        let perm = vec![
+            PermissionOverwrite {
+                allow: Permissions::SPEAK,
+                deny: Permissions::all(),
+                kind: PermissionOverwriteType::Role(everyone_role.unwrap().id)
+            },
+            PermissionOverwrite {
+                allow: Permissions::VIEW_CHANNEL |
+                    Permissions::SEND_MESSAGES |
+                    Permissions::READ_MESSAGE_HISTORY |
+                    Permissions::MOVE_MEMBERS |
+                    Permissions::SPEAK |
+                    Permissions::CONNECT,
+                deny: Permissions::empty(),
+                kind: PermissionOverwriteType::Role(host_role.unwrap().id)
+            }
+        ];
+        let category = mci.guild_id.unwrap().create_channel(&ctx, |new_cahannel| {
+            new_cahannel.kind(ChannelType::Category)
+                .name(MODERATION_CATEGORY_NAME)
+                .permissions(perm)
+        })
+            .await.unwrap();
+        let perm = vec![];
+        let validation = create_channel_in_category("Validation", Text, &category, &ctx, &mci, &perm);
+        let discussion = create_channel_in_category("Discussions", Text, &category, &ctx, &mci, &perm);
+        let commandes = create_channel_in_category("Commandes", Text, &category, &ctx, &mci, &perm);
+        let discussions_bis = create_channel_in_category("Discussions", Voice, &category, &ctx, &mci, &perm);
+        let channels = join!(validation, discussion, commandes, discussions_bis);
+
+        return category
+    }
+
+    res.unwrap()
+
+    //TODO récupérer les id des channels dans la bdd, récupérer les channels, en faire un tuple, et l'envoyer
+}
+
+async fn create_edition_category(ctx  : &Context, mci : &ModalSubmitInteraction, edition : &str, inscrit_role : &Role) -> GuildChannel {
+    let res = find_channel_by_name(&ctx, &mci, &edition).await;
+    if res.is_err() {
+        let category = mci.guild_id.unwrap().create_channel(&ctx, |new_cahannel| {
+            new_cahannel.kind(ChannelType::Category)
+                .name(&edition)
+        })
+            .await.unwrap();
+
+        let everyone_role =  find_role_by_name(&ctx, &mci, EVERYONE_ROLE_NAME);
+        let host_role = find_role_by_name(&ctx, &mci, HOST_ROLE_NAME);
+        let inscrit_role = find_role_by_name(&ctx, &mci, INSCRIT_ROLE_NAME);
+        let (everyone_role, host_role, inscrit_role) = join!(everyone_role, host_role, inscrit_role);
+
+        let perms = vec![PermissionOverwrite {
+            allow: Permissions::VIEW_CHANNEL,
+            deny: Permissions::SEND_MESSAGES,
+            kind: PermissionOverwriteType::Role(everyone_role.as_ref().unwrap().id)
+        }];
+        let reglement = create_channel_in_category("Règlement"           , Text, &category, &ctx, &mci, &perms);
+
+        let perms = vec![PermissionOverwrite {
+            allow: Permissions::VIEW_CHANNEL | Permissions::SEND_MESSAGES | Permissions::READ_MESSAGE_HISTORY,
+            deny: Permissions::empty(),
+            kind: PermissionOverwriteType::Role(everyone_role.as_ref().unwrap().id)
+        }, PermissionOverwrite {
+            allow: Permissions::VIEW_CHANNEL,
+            deny: Permissions::empty(),
+            kind: PermissionOverwriteType::Role(host_role.as_ref().unwrap().id)
+        }];
+        let inscriptions = create_channel_in_category("Inscriptions"        , Text, &category, &ctx, &mci, &perms);
+
+        let perms = vec![PermissionOverwrite {
+            allow: Permissions::empty(),
+            deny: Permissions::all(),
+            kind: PermissionOverwriteType::Role(everyone_role.as_ref().unwrap().id)
+        }, PermissionOverwrite {
+            allow: Permissions::VIEW_CHANNEL | Permissions::SEND_MESSAGES | Permissions::READ_MESSAGE_HISTORY,
+            deny: Permissions::empty(),
+            kind: PermissionOverwriteType::Role(inscrit_role.as_ref().unwrap().id)
+        }, PermissionOverwrite {
+            allow: Permissions::VIEW_CHANNEL | Permissions::SEND_MESSAGES | Permissions::MANAGE_MESSAGES | Permissions::READ_MESSAGE_HISTORY,
+            deny: Permissions::empty(),
+            kind: PermissionOverwriteType::Role(host_role.as_ref().unwrap().id)
+        }];
+        let equipes = create_channel_in_category("Equipes"             , Text, &category, &ctx, &mci, &perms);
+
+        join!(reglement, inscriptions, equipes);
+        return category
+    }
+    res.unwrap()
+}
+
+async fn create_channel_in_category(name : &str, channel_type : ChannelType, category : &GuildChannel, ctx : &Context, mci : &ModalSubmitInteraction, perms: &Vec<PermissionOverwrite>) -> GuildChannel {
+    mci.guild_id.unwrap().create_channel(&ctx, |new_cahannel| {
+        new_cahannel.kind(channel_type)
+            .name(name)
+            .category(category.id.0)
+            .permissions(perms.to_owned())
+    })
+        .await.unwrap()
 }
 
 async fn match_dates(date : Result<(DATE, DATE), String>, mci : &ModalSubmitInteraction, ctx: &Context) -> Result<(DATE, DATE), String> {
@@ -240,7 +490,7 @@ async fn edition_overlap_check(timestamp_debut : &i64, timestamp_fin : &i64, cli
         return if timestamp_fin.to_owned() == 0 {
             Err("la date de fin n'est pas valide !".to_string())
         } else {
-            Err("la date de fin n'est pas valide !".to_string())
+            Err("la date de début n'est pas valide !".to_string())
         }
     }
 

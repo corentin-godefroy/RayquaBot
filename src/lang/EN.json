@@ -1,0 +1,8 @@
+{
+  "_" : "====> DELETE_EDITION <====",
+  "error_delete_edition_edition_missing" : "You have no edition that can be deleted.\n\nYou can't delete a past edition.\n\n\nFor any request to delete a past edition, please contact me at **{}**",
+  "delete_edition_placeholder_menu" : "Choose an edition to delete.",
+  "error_delete_edition_on_delete" : "An error occured while detion of edition.\nContact me at **{}**",
+  "success_delete_edition_text" : "The edition has been successfully deleted !",
+
+}

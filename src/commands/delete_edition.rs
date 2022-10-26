@@ -33,7 +33,7 @@ pub async fn delete_edition_reactor(client : &MongoClient, command : &Applicatio
     let editions = client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).aggregate(
         [doc! {
             "$match": doc! {
-                ORGANISATOR: user_id,
+                ORGANISATOR: &user_id.as_str(),
                 COMPETITION_END_DATE: doc! {
                     "$gt": chrono::Utc::now().timestamp()
                 }
@@ -59,6 +59,7 @@ pub async fn delete_edition_reactor(client : &MongoClient, command : &Applicatio
         \net tu ne peux pas supprimer une édition qui a déjà eu lieu.\
         \n\nPour toute demande de suppression d'édition passée, contacte le développeur à l'adresse mail **{}**", CONTACT);
         send_error_from_command(&com, &ctx, &msg).await;
+        return;
     }
 
     command.create_interaction_response(&ctx.http, |response| {

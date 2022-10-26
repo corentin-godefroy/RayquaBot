@@ -21,6 +21,7 @@ pub const EDIT_END_COMPETITION : &str = "edit_end_competition";
 pub const EDIT_START_EDITION_END : &str = "edit_start_inscriptions_end"; // ?????
 
 pub const EDITIONS_COLLECTION : &str = "editions";
+pub const DISCORD_INFO_COLLECTION : &str = "discord_infos";
 pub const RAYQUABOT_DB : &str = "RayquaBot";
 pub const INSCRIPTION_START_DATE: &str = "inscription_start_date";
 pub const INSCRIPTION_END_DATE: &str = "inscription_end_date";
@@ -29,6 +30,14 @@ pub const COMPETITION_END_DATE: &str = "competition_end_date";
 pub const GUILD_ID : &str = "guild_id";
 pub const EDITION_NAME: &str = "edition_name";
 pub const ORGANISATOR: &str = "organisateur";
+
+pub const EDITION_FILE : &str = "edition_file";
+pub const ADMIN_ROLE_ID :&str =  "admin_role_id";
+pub const HOST_ROLE_ID : &str = "host_role_id";
+pub const INSCRIT_ROLE_ID : &str = "inscrit_role_id";
+pub const MODERRATION_CATEGORY_ID: &str = "moderation_category_id";
+pub const EDITION_CATEGORY_ID: &str = "edition_category_id";
+
 pub const RED_COLOR : i32 = 0xff0000;
 pub const GREEN_COLOR : i32 = 0x00ff00;
 pub const CONTACT : &str = "contact.cgbots@gmail.com";
@@ -46,3 +55,12 @@ pub enum TypeDate {
 }
 
 pub const EDITION_SELECT : &str = "edition_select";
+
+pub const SETUP_ENV: &str = "setup_env";
+pub const IMPORT_ENV: &str = "import_env";
+
+pub const ADMIN_ROLE_NAME: &str = "Admin";
+pub const HOST_ROLE_NAME: &str = "Host";
+pub const INSCRIT_ROLE_NAME: &str = "Inscrit";
+pub const EVERYONE_ROLE_NAME: &str = "@everyone";
+pub const MODERATION_CATEGORY_NAME: &str = "Moderation";

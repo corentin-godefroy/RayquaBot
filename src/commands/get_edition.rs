@@ -82,7 +82,7 @@ pub async fn get_edition_end(client : &MongoClient, mci : MessageComponentIntera
     let competition_start_date = result.get(COMPETITION_START_DATE).unwrap().as_i64().unwrap();
     let competition_end_date = result.get(COMPETITION_END_DATE).unwrap().as_i64().unwrap();
 
-    let _ = mci.create_interaction_response(&ctx.http, |response| {
+    mci.create_interaction_response(&ctx.http, |response| {
         response.kind(InteractionResponseType::UpdateMessage)
             .interaction_response_data(|message|
                 message.embed(|embed| {

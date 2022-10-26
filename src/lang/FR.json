@@ -1,0 +1,16 @@
+{
+  "_" : "====> NEW_EDITION <====",
+
+
+  "_" : "====> DELETE_EDITION <====",
+  "error_delete_edition_edition_missing" : "Tu n'as aucune édition en cours ou future qui puisse être supprimée.\n\nTu ne peux pas supprimer une édition qui a déjà eu lieu.\n\n\nPour toute demande de suppression d'édition passée, contacte le développeur à l'adresse mail **{}**",
+  "delete_edition_placeholder_menu" : "Choisis une edition à supprimer.",
+  "error_delete_edition_on_delete" : "Une erreur est survenue lors de la suppression de l'édition.\nContacte le développeur à l'adresse mail **{}**",
+  "success_delete_edition_text" : "L'édition à été supprimée avec succès !",
+
+  "_" : "====> EDIT_EDITION <====",
+  "edit_edition_string_choice_registration_start" : "",
+  "edit_edition_string_choice_registration_end" : "",
+  "edit_edition_string_choice_competition_start" : "",
+  "edit_edition_string_choice_competition_end" : ""
+}

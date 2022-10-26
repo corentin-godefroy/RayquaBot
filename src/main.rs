@@ -64,6 +64,8 @@ impl EventHandler for HandlerDiscord {
                     EDIT_START_COMPETITION => edit_start_inscriptions(MONGOCLIENT.get().unwrap(), mci, ctx, StartCompetition).await,
                     EDIT_END_COMPETITION => edit_start_inscriptions(MONGOCLIENT.get().unwrap(), mci, ctx, EndCompetition).await,
                     EDITION_SELECT => get_edition_end(MONGOCLIENT.get().unwrap(), mci, ctx).await,
+                    SETUP_ENV => println!("ok setup"),
+                    IMPORT_ENV => println!("ok import"),
                     _ => ()
                 }},
 
