@@ -124,7 +124,7 @@ pub async fn get_edition_by_name(client : &MongoClient, name : &str, id : &str) 
     client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).find_one(
         doc! {
             EDITION_NAME: &name,
-            ORGANISATOR: &id
+            ORGANIZER: &id
         },
         None
     ).await.unwrap()
@@ -134,7 +134,7 @@ pub async fn get_editions_names(client : &MongoClient, id : &str) -> Vec<Result<
     client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).aggregate(
         [doc! {
             "$match": doc! {
-                ORGANISATOR: id,
+                ORGANIZER: id,
                 COMPETITION_END_DATE: doc! {
                     "$gt": chrono::Utc::now().timestamp()
                 }

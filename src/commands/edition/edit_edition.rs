@@ -21,7 +21,8 @@ use serenity::model::application::interaction::modal::ModalSubmitInteraction;
 
 use serenity::model::Permissions;
 use crate::*;
-use super::common_functions::*;
+use crate::common_functions::{get_edition_by_name, get_editions_names, send_error_from_command, send_error_from_modal, send_success_from_modal};
+use crate::constants::*;
 
 pub async fn edit_edition_setup(ctx : &Context){
     let _ = Command::create_global_application_command(&ctx.http, |command| {
@@ -230,7 +231,7 @@ async fn update_date(ctx: &Context, mci: &Arc<ModalSubmitInteraction>, client : 
     client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).update_one(
         doc! {
                 EDITION_NAME: &edition,
-                ORGANISATOR: mci.user.id.to_string()
+                ORGANIZER: mci.user.id.to_string()
             },
         doc! {
                 "$set": doc! {

@@ -10,8 +10,8 @@ use serenity::futures::StreamExt;
 use serenity::model::application::interaction::message_component::MessageComponentInteraction;
 use serenity::model::Permissions;
 use crate::doc;
-use super::common_functions::*;
-use super::constants::*;
+use crate::commands::common_functions::*;
+use crate::commands::constants::*;
 
 pub async fn delete_edition_setup(ctx: &Context) {
     let _ = Command::create_global_application_command(&ctx.http, |command| {
@@ -33,7 +33,7 @@ pub async fn delete_edition_reactor(client : &MongoClient, command : &Applicatio
     let editions = client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).aggregate(
         [doc! {
             "$match": doc! {
-                ORGANISATOR: &user_id.as_str(),
+                ORGANIZER: &user_id.as_str(),
                 COMPETITION_END_DATE: doc! {
                     "$gt": chrono::Utc::now().timestamp()
                 }

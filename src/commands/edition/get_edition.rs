@@ -9,7 +9,8 @@ use chrono::{NaiveDateTime};
 use serenity::model::application::interaction::message_component::MessageComponentInteraction;
 use serenity::model::Permissions;
 use crate::*;
-use super::common_functions::*;
+use commands::common_functions::*;
+use crate::constants::*;
 
 pub async fn get_edition_setup(ctx : &Context){
     let _ = Command::create_global_application_command(&ctx.http, |command| {
@@ -71,7 +72,7 @@ pub async fn get_edition_end(client : &MongoClient, mci : MessageComponentIntera
     let result = client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).find_one(
         doc! {
             EDITION_NAME: &edition,
-            ORGANISATOR: mci.user.id.to_string()
+            ORGANIZER: mci.user.id.to_string()
         },
         None
     ).await.unwrap().unwrap();

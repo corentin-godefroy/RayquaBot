@@ -1,30 +1,24 @@
-
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
-
 use serenity::model::application::component::{ActionRowComponent};
 use serenity::model::application::interaction::InteractionResponseType;
 use serenity::model::application::interaction::modal::ModalSubmitInteraction;
 use serenity::client::Context;
 use serenity::model::application::command::{Command};
-use mongodb::{Client as MongoClient};
+use mongodb::{Client as MongoClient, Client};
 use mongodb::bson::{Document};
 use chrono;
 use chrono::{NaiveDate, NaiveDateTime};
-
-
-
+use serenity::futures::StreamExt;
 use serenity::model::application::component::InputTextStyle;
 use serenity::model::channel::{ChannelType, GuildChannel, PermissionOverwrite, PermissionOverwriteType};
 use serenity::model::channel::ChannelType::{Text, Voice};
-
 use serenity::model::guild::Role;
 use serenity::model::id::{GuildId};
 use serenity::model::Permissions;
 use tokio::join;
-use TypeDate::*;
-use crate::commands::common_functions::{send_error_from_component, send_error_from_modal};
+use crate::commands::common_functions::{send_error_from_command, send_error_from_modal};
 use crate::commands::constants::*;
-use crate::{doc, ORGANISATOR};
+use crate::doc;
 
 struct DATE {
     jour : u8,
@@ -58,7 +52,55 @@ pub async fn new_edition_setup(ctx: &Context) {
         .await.unwrap();
 }
 
-pub async fn new_edition(command : &ApplicationCommandInteraction, ctx : &Context) {
+pub async fn new_edition(command : &ApplicationCommandInteraction, ctx : &Context, client: &Client) {
+    let roles = ctx.http.get_guild(command.guild_id.unwrap().0).await.unwrap();
+    let admin_role = roles.role_by_name(ADMIN_ROLE_NAME);
+    if admin_role.is_none(){
+        send_error_from_command(&command, &ctx, format!("Le rôle **@{}** n'existe pas. Est-tu sûr que le serveur est setup ? Si tu n'est pas sûr, fais --__/setup__**. **IMPORTANT**, __le serveur doit être communautaire__ pour que cette commande fonctionne.", ADMIN_ROLE_NAME).as_str()).await;
+        return;
+    }
+    let admin_role = admin_role.unwrap();
+    if !command.member.as_ref().unwrap().roles.contains(&admin_role.id){
+        send_error_from_command(&command, &ctx, format!("Tu n'as pas les droits réquis pour cette commande. Seul les **@{}** ont le droit de créer une nouvelle édition.", ADMIN_ROLE_NAME).as_str()).await;
+        return;
+    }
+    
+    let collection =  client.database(RAYQUABOT_DB).collection::<Document>(SERVER_COLLECTION);
+    let serveur_setup = collection.find_one(
+        doc! {
+            GUILD_ID : command.guild_id.unwrap().0.to_string()
+        },
+        None
+    ).await.unwrap();
+    
+    let collection =  client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION);
+    let editions = collection.count_documents(
+        doc! {
+            GUILD_ID : command.guild_id.unwrap().0.to_string(),
+            ORGANIZER: command.guild_id.unwrap().0.to_string()
+        },
+        None
+    ).await.unwrap();
+    
+    if editions >= 25 {
+        command.create_interaction_response(&ctx, |response|{
+            response.kind(InteractionResponseType::ChannelMessageWithSource)
+                .interaction_response_data(|message|{
+                    message.embed(|embed|{
+                        embed.colour(RED_COLOR)
+                            .title("Limite maximale d'édition atteinte !")
+                            .description("Tu as atteint la limite de 25 édition planifiable simultanément.")
+                    })
+                })
+        }).await.unwrap();
+        return;
+    }
+    
+    if ctx.http.get_guild(command.guild_id.unwrap().0).await.unwrap().channels(&ctx.http).await.unwrap().get(&command.channel_id).unwrap().name != MODERATION_CONVERSATION_CHANNEL_NAME{
+        send_error_from_command(command, &ctx, format!("Pour ajouter une édition rends toi dans le salon #{} de la catégorie {}", MODERATION_CONVERSATION_CHANNEL_NAME, MODERATION_CATEGORY_NAME).as_str()).await;
+        return;
+    }
+    
     command.create_interaction_response(&ctx.http, |response| {
         response.kind(InteractionResponseType::Modal)
             .interaction_response_data(|message|
@@ -174,13 +216,12 @@ pub async fn new_edition_modal(client : &MongoClient, mci : ModalSubmitInteracti
     match resultat {
         Ok(_) => {
             let collection =  client.database(RAYQUABOT_DB).collection(EDITIONS_COLLECTION);
-
+            
             let already_exist = collection.find_one(
                 doc! {
-                ORGANISATOR: mci.user.id.0.to_string(),
-                EDITION_NAME: doc! {
-                        "$eq": nom_competition.value.as_str()
-                    }
+                    ORGANIZER: mci.user.id.0.to_string(),
+                    GUILD_ID: mci.guild_id.unwrap().0.to_string(),
+                    EDITION_NAME: nom_competition.value.as_str()
                 }, None
             ).await.unwrap();
 
@@ -189,44 +230,44 @@ pub async fn new_edition_modal(client : &MongoClient, mci : ModalSubmitInteracti
                 return;
             }
 
-            //TODO setup les permissions pour les catégories
-            //     creer la catégorie gimmik
-            //     Setup les commandes d'inscriptions et de création d'équipes et de modération dans les salons correspondant !!!!
-            //     Setup les probas et temps par défaut
-
-            //setup roles
-            let admin_role = create_admin_role(&ctx, &mci);
-            let host_role = create_host_role(&ctx, &mci);
-            let inscrit_role = create_inscrit_role(&ctx, &mci);
-            let roles : (Role, Role, Role) = join!(admin_role, host_role, inscrit_role);
-
-            //setup channels et catégories
-            let host_cat = create_host_category(&ctx, &mci);
-            let edition_cat = create_edition_category(&ctx, &mci, &nom_competition.value, &roles.2);
-            let categories = join!(host_cat, edition_cat);
-
             //enregisterement infos dan la bdd
             let doc = doc! {
-                ORGANISATOR  : organisateur,
+                ORGANIZER    : organisateur,
                 EDITION_NAME : nom_competition.value.as_str(),
                 GUILD_ID     : &guild.0.to_string(),
                 INSCRIPTION_START_DATE : &timestamps.0,
                 INSCRIPTION_END_DATE   : &timestamps.1,
                 COMPETITION_START_DATE : &timestamps.2,
-                COMPETITION_END_DATE   : &timestamps.3
+                COMPETITION_END_DATE   : &timestamps.3,
+                BDD_POKE_RED_GREEN_BLUE              : 0,
+                BDD_POKE_YELLOW                      : 0,
+                BDD_POKE_GOLD_SILVER                 : 0,
+                BDD_POKE_CRYSTAL                     : 0,
+                BDD_POKE_RUBY_SAPPHIRE               : 0,
+                BDD_POKE_FIRERED_LEAFGREEN           : 0,
+                BDD_POKE_EMERALD                     : 0,
+                BDD_POKE_DIAMOND_PEARL               : 0,
+                BDD_POKE_PLATINUM                    : 0,
+                BDD_POKE_HEARTGOLD_SOULSILVER        : 0,
+                BDD_POKE_BLACK_WHITE                 : 0,
+                BDD_POKE_BLACK2_WHITE2               : 0,
+                BDD_POKE_X_Y                         : 0,
+                BDD_POKE_OMEGA_RUBY_ALPHA_SAPPHIRE   : 0,
+                BDD_POKE_SUN_MOON                    : 0,
+                BDD_POKE_ULTRASUN_ULTRAMOON          : 0,
+                BDD_POKE_LETSGOPIKACHU_LETSGOEEVEE   : 0,
+                BDD_POKE_SWORD_SHIELD                : 0,
+                BDD_POKE_BRILLANTDIAMOND_SHININGPEARL: 0,
+                BDD_POKE_LEGENDARCEUS                : 0,
+                BDD_POKE_SCARLET_VIOLET              : 0,
+                BDD_POKE_DONJON_MYSTERE              : 0,
+                BDD_POKE_COLOSEUM                    : 0,
+                BDD_POKE_STADIUM_EU                  : 0,
+                BDD_POKE_STADIUM_JAP                 : 0,
+                BDD_POKE_STADIUM_2                   : 0,
+                BDD_POKE_XD                          : 0
             };
-            let mut edition_result = collection.insert_one(doc, None).await.unwrap();
-
-            let discord_info = doc! {
-                EDITION_FILE    : &edition_result.inserted_id.as_object_id(),
-                ADMIN_ROLE_ID   : &roles.0.id.0.to_string(),
-                HOST_ROLE_ID    : &roles.1.id.0.to_string(),
-                INSCRIT_ROLE_ID : &roles.2.id.0.to_string(),
-                MODERRATION_CATEGORY_ID : &categories.0.id.to_string(),
-                EDITION_CATEGORY_ID     : &categories.1.id.to_string()
-            };
-            client.database(RAYQUABOT_DB).collection(DISCORD_INFO_COLLECTION).insert_one(discord_info, None).await.expect(format!("Erreur a l'insertion des informations discord pour l'édition {}", &nom_competition.value).as_str());
-
+            collection.insert_one(doc, None).await.unwrap();
 
             mci.create_interaction_response(&ctx.http, |response| {
                 response.kind(InteractionResponseType::ChannelMessageWithSource)
@@ -249,11 +290,6 @@ pub async fn new_edition_modal(client : &MongoClient, mci : ModalSubmitInteracti
             })
                 .await
                 .expect("Failed to send inteaction response");
-
-
-
-
-
         }
         Err(e) => send_error_from_modal(&mci, &ctx, &e).await
     }
@@ -277,178 +313,6 @@ async fn find_channel_by_name(ctx : &Context, mci : &ModalSubmitInteraction, nam
         }
     }
     Err(false)
-}
-
-async fn create_admin_role(ctx  : &Context, mci : &ModalSubmitInteraction) -> Role {
-    let found = find_role_by_name(&ctx, &mci, ADMIN_ROLE_NAME).await;
-    if found.is_err() {
-        let role = mci.guild_id.unwrap().create_role(&ctx, |role| {
-            role.name(ADMIN_ROLE_NAME)
-                .colour(RED_COLOR as u64)
-                .hoist(true)
-                .position(0)
-                .mentionable(true)
-                .permissions(Permissions::ADMINISTRATOR)
-        }).await.unwrap();
-        return role;
-    }
-    return found.unwrap()
-}
-
-async fn create_host_role(ctx  : &Context, mci : &ModalSubmitInteraction) -> Role {
-    let found = find_role_by_name(&ctx, &mci, HOST_ROLE_NAME).await;
-    if found.is_err() {
-        let role = mci.guild_id.unwrap().create_role(&ctx, |role|{
-            role.name(HOST_ROLE_NAME)
-                .colour(0xff8000) //orange
-                .hoist(true)
-                .position(0)
-                .mentionable(true)
-                .permissions(
-                    Permissions::MANAGE_NICKNAMES |
-                        Permissions::DEAFEN_MEMBERS |
-                        Permissions::MANAGE_MESSAGES |
-                        Permissions::VIEW_CHANNEL |
-                        Permissions::KICK_MEMBERS |
-                        Permissions::MENTION_EVERYONE |
-                        Permissions::MUTE_MEMBERS |
-                        Permissions::MOVE_MEMBERS |
-                        Permissions::MODERATE_MEMBERS |
-                        Permissions::READ_MESSAGE_HISTORY |
-                        Permissions::CONNECT |
-                        Permissions::SPEAK |
-                        Permissions::STREAM
-                )
-        }).await.unwrap();
-        return role;
-    }
-    found.unwrap()
-}
-
-async fn create_inscrit_role(ctx  : &Context, mci : &ModalSubmitInteraction) -> Role {
-    let found = find_role_by_name(&ctx, &mci, INSCRIT_ROLE_NAME).await;
-    if found.is_err() {
-        let role = mci.guild_id.unwrap().create_role(&ctx, |role|{
-            role.name(INSCRIT_ROLE_NAME)
-                .colour(0x5E9A78)
-                .hoist(true)
-                .position(0)
-                .mentionable(true)
-                .permissions(
-                    Permissions::empty()
-                )
-        }).await.unwrap();
-        return role;
-    }
-    found.unwrap()
-}
-
-async fn create_host_category(ctx  : &Context, mci : &ModalSubmitInteraction) -> GuildChannel {
-    let res = find_channel_by_name(&ctx, &mci, MODERATION_CATEGORY_NAME).await;
-
-    if res.is_err() {
-        let everyone_role = find_role_by_name(&ctx, &mci, EVERYONE_ROLE_NAME);
-        let host_role = find_role_by_name(&ctx, &mci, HOST_ROLE_NAME);
-        let (everyone_role, host_role) = join!(everyone_role, host_role);
-        let perm = vec![
-            PermissionOverwrite {
-                allow: Permissions::SPEAK,
-                deny: Permissions::all(),
-                kind: PermissionOverwriteType::Role(everyone_role.unwrap().id)
-            },
-            PermissionOverwrite {
-                allow: Permissions::VIEW_CHANNEL |
-                    Permissions::SEND_MESSAGES |
-                    Permissions::READ_MESSAGE_HISTORY |
-                    Permissions::MOVE_MEMBERS |
-                    Permissions::SPEAK |
-                    Permissions::CONNECT,
-                deny: Permissions::empty(),
-                kind: PermissionOverwriteType::Role(host_role.unwrap().id)
-            }
-        ];
-        let category = mci.guild_id.unwrap().create_channel(&ctx, |new_cahannel| {
-            new_cahannel.kind(ChannelType::Category)
-                .name(MODERATION_CATEGORY_NAME)
-                .permissions(perm)
-        })
-            .await.unwrap();
-        let perm = vec![];
-        let validation = create_channel_in_category("Validation", Text, &category, &ctx, &mci, &perm);
-        let discussion = create_channel_in_category("Discussions", Text, &category, &ctx, &mci, &perm);
-        let commandes = create_channel_in_category("Commandes", Text, &category, &ctx, &mci, &perm);
-        let discussions_bis = create_channel_in_category("Discussions", Voice, &category, &ctx, &mci, &perm);
-        let channels = join!(validation, discussion, commandes, discussions_bis);
-
-        return category
-    }
-
-    res.unwrap()
-
-    //TODO récupérer les id des channels dans la bdd, récupérer les channels, en faire un tuple, et l'envoyer
-}
-
-async fn create_edition_category(ctx  : &Context, mci : &ModalSubmitInteraction, edition : &str, inscrit_role : &Role) -> GuildChannel {
-    let res = find_channel_by_name(&ctx, &mci, &edition).await;
-    if res.is_err() {
-        let category = mci.guild_id.unwrap().create_channel(&ctx, |new_cahannel| {
-            new_cahannel.kind(ChannelType::Category)
-                .name(&edition)
-        })
-            .await.unwrap();
-
-        let everyone_role =  find_role_by_name(&ctx, &mci, EVERYONE_ROLE_NAME);
-        let host_role = find_role_by_name(&ctx, &mci, HOST_ROLE_NAME);
-        let inscrit_role = find_role_by_name(&ctx, &mci, INSCRIT_ROLE_NAME);
-        let (everyone_role, host_role, inscrit_role) = join!(everyone_role, host_role, inscrit_role);
-
-        let perms = vec![PermissionOverwrite {
-            allow: Permissions::VIEW_CHANNEL,
-            deny: Permissions::SEND_MESSAGES,
-            kind: PermissionOverwriteType::Role(everyone_role.as_ref().unwrap().id)
-        }];
-        let reglement = create_channel_in_category("Règlement"           , Text, &category, &ctx, &mci, &perms);
-
-        let perms = vec![PermissionOverwrite {
-            allow: Permissions::VIEW_CHANNEL | Permissions::SEND_MESSAGES | Permissions::READ_MESSAGE_HISTORY,
-            deny: Permissions::empty(),
-            kind: PermissionOverwriteType::Role(everyone_role.as_ref().unwrap().id)
-        }, PermissionOverwrite {
-            allow: Permissions::VIEW_CHANNEL,
-            deny: Permissions::empty(),
-            kind: PermissionOverwriteType::Role(host_role.as_ref().unwrap().id)
-        }];
-        let inscriptions = create_channel_in_category("Inscriptions"        , Text, &category, &ctx, &mci, &perms);
-
-        let perms = vec![PermissionOverwrite {
-            allow: Permissions::empty(),
-            deny: Permissions::all(),
-            kind: PermissionOverwriteType::Role(everyone_role.as_ref().unwrap().id)
-        }, PermissionOverwrite {
-            allow: Permissions::VIEW_CHANNEL | Permissions::SEND_MESSAGES | Permissions::READ_MESSAGE_HISTORY,
-            deny: Permissions::empty(),
-            kind: PermissionOverwriteType::Role(inscrit_role.as_ref().unwrap().id)
-        }, PermissionOverwrite {
-            allow: Permissions::VIEW_CHANNEL | Permissions::SEND_MESSAGES | Permissions::MANAGE_MESSAGES | Permissions::READ_MESSAGE_HISTORY,
-            deny: Permissions::empty(),
-            kind: PermissionOverwriteType::Role(host_role.as_ref().unwrap().id)
-        }];
-        let equipes = create_channel_in_category("Equipes"             , Text, &category, &ctx, &mci, &perms);
-
-        join!(reglement, inscriptions, equipes);
-        return category
-    }
-    res.unwrap()
-}
-
-async fn create_channel_in_category(name : &str, channel_type : ChannelType, category : &GuildChannel, ctx : &Context, mci : &ModalSubmitInteraction, perms: &Vec<PermissionOverwrite>) -> GuildChannel {
-    mci.guild_id.unwrap().create_channel(&ctx, |new_cahannel| {
-        new_cahannel.kind(channel_type)
-            .name(name)
-            .category(category.id.0)
-            .permissions(perms.to_owned())
-    })
-        .await.unwrap()
 }
 
 async fn match_dates(date : Result<(DATE, DATE), String>, mci : &ModalSubmitInteraction, ctx: &Context) -> Result<(DATE, DATE), String> {

@@ -8,17 +8,24 @@ use serenity::{
     prelude::*,
 };
 use std::env;
+use tokio::join;
 use mongodb::bson::doc;
 use serenity::framework::StandardFramework;
 use serenity::model::application::interaction::{Interaction};
 use mongodb::{Client as MongoClient};
 use once_cell::sync::OnceCell;
-use crate::commands::new_edition::*;
-use crate::commands::delete_edition::*;
-use crate::commands::edit_edition::*;
-use crate::commands::constants::*;
-use crate::commands::get_edition::{get_edition_end, get_edition_reactor, get_edition_setup};
-use crate::TypeDate::{EndCompetition, EndRegistration, StartCompetition, StartRegistration};
+use serenity::http::CacheHttp;
+use crate::commands::*;
+use constants::TypeDate::{EndCompetition, EndRegistration, StartCompetition, StartRegistration};
+use crate::commands::edition::lock_version::{lock_version_reactor, lock_version_setup};
+use crate::commands::joueurs::registration::{get_registration_reactor, registration_setup};
+use crate::commands::setup_env_bot::{setup_env, setup_env_setup};
+use crate::delete_edition::*;
+use crate::edit_edition::*;
+use crate::edition::*;
+use crate::get_edition::*;
+use crate::new_edition::*;
+use crate::constants::*;
 
 //global variable for mongodb client
 static MONGOCLIENT: OnceCell<MongoClient> = OnceCell::new();
@@ -28,31 +35,42 @@ struct HandlerDiscord;
 #[async_trait]
 impl EventHandler for HandlerDiscord {
     async fn ready(&self, ctx: Context, ready: Ready) {
-        ping_setup(ctx.borrow()).await;
-        new_edition_setup(ctx.borrow()).await;
-        delete_edition_setup(ctx.borrow()).await;
-        edit_edition_setup(ctx.borrow()).await;
-        get_edition_setup(ctx.borrow()).await;
+        /*let commands = ctx.http.get_global_application_commands().await.unwrap();
+        for command in commands{
+            if command.name == LOCK_VERSION{
+                ctx.http.delete_global_application_command(command.id.0).await.unwrap();
+            }
+        }*/
+        let ping = ping_setup(ctx.borrow());
+        let new_edition = new_edition_setup(ctx.borrow());
+        let delete_edition = delete_edition_setup(ctx.borrow());
+        let edit_edition = edit_edition_setup(ctx.borrow());
+        let get_edition = get_edition_setup(ctx.borrow());
+        let setup_env = setup_env_setup(ctx.borrow());
+        let registration = registration_setup(ctx.borrow());
+        let lock = lock_version_setup(ctx.borrow());
+        //join!(ping, new_edition, delete_edition, edit_edition, get_edition, setup_env, registration, lock);
         println!("{} is connected!", ready.user.name);
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction{
             Interaction::ApplicationCommand(command) => {
-
                 match command.data.name.as_str() {
                     PING => ping_reactor(&command, &ctx).await,
-                    NEW_EDITION => new_edition(&command, &ctx).await,
+                    SETUP_ENV => setup_env(&ctx, &command, MONGOCLIENT.get().unwrap()).await,
+                    NEW_EDITION => new_edition(&command, &ctx, MONGOCLIENT.get().unwrap()).await,
                     DELETE_EDITION => delete_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
                     EDIT_EDITION => edit_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
                     GET_EDITION => get_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
+                    REGISTRATION => get_registration_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
+                    LOCK_VERSION => lock_version_reactor(&command, &ctx, MONGOCLIENT.get().unwrap()).await,
                     _ => ()
                 }},
 
             Interaction::ModalSubmit(mci) => {
                 match mci.data.custom_id.as_str() {
                     CREATE_NEW_EDITION => new_edition_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
-                    //EDIT_START_EDITION_END => edit_start_inscriptions_end(MONGOCLIENT.get().unwrap(), mci, ctx).await,
                     _ => ()
                 }},
 
@@ -64,8 +82,7 @@ impl EventHandler for HandlerDiscord {
                     EDIT_START_COMPETITION => edit_start_inscriptions(MONGOCLIENT.get().unwrap(), mci, ctx, StartCompetition).await,
                     EDIT_END_COMPETITION => edit_start_inscriptions(MONGOCLIENT.get().unwrap(), mci, ctx, EndCompetition).await,
                     EDITION_SELECT => get_edition_end(MONGOCLIENT.get().unwrap(), mci, ctx).await,
-                    SETUP_ENV => println!("ok setup"),
-                    IMPORT_ENV => println!("ok import"),
+                    VALIDATE => println!("OK"),
                     _ => ()
                 }},
 
