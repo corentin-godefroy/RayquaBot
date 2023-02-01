@@ -15,8 +15,9 @@ pub const REGISTRATION: &str = "inscription";
 pub const ADD_VERSION: &str = "add_version";
 pub const ADD_NAMES: &str = "add_names";
 pub const VALIDATE: &str = "validate";
-pub const LOCK_VERSION: &str = "lock_version";
-pub const UNLOCK_VERSION: &str = "unlock_version";
+pub const VERSION_SETUP: &str = "version_setup";
+pub const PRINT_VERSIONS: &str = "print_versions";
+
 
 pub const DELETE_EDITION_MODAL: &str = "delete_edition_modal";
 pub const LOCK_VERSION_MODAL: &str = "lock_version_modal";
@@ -24,6 +25,7 @@ pub const EDIT_START_INSCRIPTIONS: &str = "edit_start_inscription";
 pub const EDIT_END_INSCRIPTIONS: &str = "edit_end_inscriptions";
 pub const EDIT_START_COMPETITION: &str = "edit_start_competition";
 pub const EDIT_END_COMPETITION: &str = "edit_end_competition";
+pub const PRINT_VERSIONS_MODAL: &str = "print_versions_modal";
 
 pub const EDIT_START_EDITION_END: &str = "edit_start_inscriptions_end"; // ?????
 

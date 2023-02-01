@@ -8,11 +8,11 @@ use mongodb::{Client as MongoClient, Client};
 use mongodb::bson::{Document};
 use chrono;
 use chrono::{NaiveDate, NaiveDateTime};
-use serenity::futures::StreamExt;
+
 use serenity::model::application::component::InputTextStyle;
-use serenity::model::channel::{ChannelType, GuildChannel, PermissionOverwrite, PermissionOverwriteType};
-use serenity::model::channel::ChannelType::{Text, Voice};
-use serenity::model::guild::Role;
+
+
+
 use serenity::model::id::{GuildId};
 use serenity::model::Permissions;
 use tokio::join;
@@ -64,14 +64,6 @@ pub async fn new_edition(command : &ApplicationCommandInteraction, ctx : &Contex
         send_error_from_command(&command, &ctx, format!("Tu n'as pas les droits réquis pour cette commande. Seul les **@{}** ont le droit de créer une nouvelle édition.", ADMIN_ROLE_NAME).as_str()).await;
         return;
     }
-    
-    let collection =  client.database(RAYQUABOT_DB).collection::<Document>(SERVER_COLLECTION);
-    let serveur_setup = collection.find_one(
-        doc! {
-            GUILD_ID : command.guild_id.unwrap().0.to_string()
-        },
-        None
-    ).await.unwrap();
     
     let collection =  client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION);
     let editions = collection.count_documents(
@@ -239,33 +231,33 @@ pub async fn new_edition_modal(client : &MongoClient, mci : ModalSubmitInteracti
                 INSCRIPTION_END_DATE   : &timestamps.1,
                 COMPETITION_START_DATE : &timestamps.2,
                 COMPETITION_END_DATE   : &timestamps.3,
-                BDD_POKE_RED_GREEN_BLUE              : 0,
-                BDD_POKE_YELLOW                      : 0,
-                BDD_POKE_GOLD_SILVER                 : 0,
-                BDD_POKE_CRYSTAL                     : 0,
-                BDD_POKE_RUBY_SAPPHIRE               : 0,
-                BDD_POKE_FIRERED_LEAFGREEN           : 0,
-                BDD_POKE_EMERALD                     : 0,
-                BDD_POKE_DIAMOND_PEARL               : 0,
-                BDD_POKE_PLATINUM                    : 0,
-                BDD_POKE_HEARTGOLD_SOULSILVER        : 0,
-                BDD_POKE_BLACK_WHITE                 : 0,
-                BDD_POKE_BLACK2_WHITE2               : 0,
-                BDD_POKE_X_Y                         : 0,
-                BDD_POKE_OMEGA_RUBY_ALPHA_SAPPHIRE   : 0,
-                BDD_POKE_SUN_MOON                    : 0,
-                BDD_POKE_ULTRASUN_ULTRAMOON          : 0,
-                BDD_POKE_LETSGOPIKACHU_LETSGOEEVEE   : 0,
-                BDD_POKE_SWORD_SHIELD                : 0,
-                BDD_POKE_BRILLANTDIAMOND_SHININGPEARL: 0,
-                BDD_POKE_LEGENDARCEUS                : 0,
-                BDD_POKE_SCARLET_VIOLET              : 0,
-                BDD_POKE_DONJON_MYSTERE              : 0,
-                BDD_POKE_COLOSEUM                    : 0,
-                BDD_POKE_STADIUM_EU                  : 0,
-                BDD_POKE_STADIUM_JAP                 : 0,
-                BDD_POKE_STADIUM_2                   : 0,
-                BDD_POKE_XD                          : 0
+                BDD_POKE_RED_GREEN_BLUE              : 1,
+                BDD_POKE_YELLOW                      : 1,
+                BDD_POKE_GOLD_SILVER                 : 1,
+                BDD_POKE_CRYSTAL                     : 1,
+                BDD_POKE_RUBY_SAPPHIRE               : 1,
+                BDD_POKE_FIRERED_LEAFGREEN           : 1,
+                BDD_POKE_EMERALD                     : 1,
+                BDD_POKE_DIAMOND_PEARL               : 1,
+                BDD_POKE_PLATINUM                    : 1,
+                BDD_POKE_HEARTGOLD_SOULSILVER        : 1,
+                BDD_POKE_BLACK_WHITE                 : 1,
+                BDD_POKE_BLACK2_WHITE2               : 1,
+                BDD_POKE_X_Y                         : 1,
+                BDD_POKE_OMEGA_RUBY_ALPHA_SAPPHIRE   : 1,
+                BDD_POKE_SUN_MOON                    : 1,
+                BDD_POKE_ULTRASUN_ULTRAMOON          : 1,
+                BDD_POKE_LETSGOPIKACHU_LETSGOEEVEE   : 1,
+                BDD_POKE_SWORD_SHIELD                : 1,
+                BDD_POKE_BRILLANTDIAMOND_SHININGPEARL: 1,
+                BDD_POKE_LEGENDARCEUS                : 1,
+                BDD_POKE_SCARLET_VIOLET              : 1,
+                BDD_POKE_DONJON_MYSTERE              : 1,
+                BDD_POKE_COLOSEUM                    : 1,
+                BDD_POKE_STADIUM_EU                  : 1,
+                BDD_POKE_STADIUM_JAP                 : 1,
+                BDD_POKE_STADIUM_2                   : 1,
+                BDD_POKE_XD                          : 1
             };
             collection.insert_one(doc, None).await.unwrap();
 
@@ -293,26 +285,6 @@ pub async fn new_edition_modal(client : &MongoClient, mci : ModalSubmitInteracti
         }
         Err(e) => send_error_from_modal(&mci, &ctx, &e).await
     }
-}
-
-async fn find_role_by_name(ctx  : &Context, mci : &ModalSubmitInteraction, name : &str) -> Result<Role, bool> {
-    let roles = mci.guild_id.unwrap().roles(&ctx).await.unwrap();
-    for role in roles {
-        if role.1.name == name{
-            return Ok(role.1);
-        }
-    }
-    return Err(false)
-}
-
-async fn find_channel_by_name(ctx : &Context, mci : &ModalSubmitInteraction, name : &str) -> Result<GuildChannel, bool> {
-    let channels = mci.guild_id.unwrap().channels(&ctx).await.unwrap();
-    for channel in channels {
-        if channel.1.name.eq(&name) {
-            return Ok(channel.1);
-        }
-    }
-    Err(false)
 }
 
 async fn match_dates(date : Result<(DATE, DATE), String>, mci : &ModalSubmitInteraction, ctx: &Context) -> Result<(DATE, DATE), String> {

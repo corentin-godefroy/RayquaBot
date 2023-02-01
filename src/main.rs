@@ -8,16 +8,18 @@ use serenity::{
     prelude::*,
 };
 use std::env;
-use tokio::join;
+
 use mongodb::bson::doc;
 use serenity::framework::StandardFramework;
 use serenity::model::application::interaction::{Interaction};
 use mongodb::{Client as MongoClient};
 use once_cell::sync::OnceCell;
-use serenity::http::CacheHttp;
+use tokio::join;
+
 use crate::commands::*;
 use constants::TypeDate::{EndCompetition, EndRegistration, StartCompetition, StartRegistration};
-use crate::commands::edition::lock_version::{lock_version_reactor, lock_version_setup};
+use crate::commands::edition::print_edition_parameters::{print_versions, print_versions_reactor, print_versions_setup};
+use crate::commands::edition::version_setup::{version_setup_end, version_setup_reactor, version_setup};
 use crate::commands::joueurs::registration::{get_registration_reactor, registration_setup};
 use crate::commands::setup_env_bot::{setup_env, setup_env_setup};
 use crate::delete_edition::*;
@@ -35,9 +37,9 @@ struct HandlerDiscord;
 #[async_trait]
 impl EventHandler for HandlerDiscord {
     async fn ready(&self, ctx: Context, ready: Ready) {
-        /*let commands = ctx.http.get_global_application_commands().await.unwrap();
-        for command in commands{
-            if command.name == LOCK_VERSION{
+        let commands = ctx.http.get_global_application_commands().await.unwrap();
+        /*for command in commands{
+            if command.name == "lock_version" {
                 ctx.http.delete_global_application_command(command.id.0).await.unwrap();
             }
         }*/
@@ -48,8 +50,9 @@ impl EventHandler for HandlerDiscord {
         let get_edition = get_edition_setup(ctx.borrow());
         let setup_env = setup_env_setup(ctx.borrow());
         let registration = registration_setup(ctx.borrow());
-        let lock = lock_version_setup(ctx.borrow());
-        //join!(ping, new_edition, delete_edition, edit_edition, get_edition, setup_env, registration, lock);
+        let setup = version_setup(ctx.borrow());
+        let print_versions = print_versions_setup(ctx.borrow());
+        //join!(ping, new_edition, delete_edition, edit_edition, get_edition, setup_env, registration, setup);
         println!("{} is connected!", ready.user.name);
     }
 
@@ -64,7 +67,8 @@ impl EventHandler for HandlerDiscord {
                     EDIT_EDITION => edit_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
                     GET_EDITION => get_edition_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
                     REGISTRATION => get_registration_reactor(MONGOCLIENT.get().unwrap(), &command, &ctx).await,
-                    LOCK_VERSION => lock_version_reactor(&command, &ctx, MONGOCLIENT.get().unwrap()).await,
+                    VERSION_SETUP => version_setup_reactor(&command, &ctx, MONGOCLIENT.get().unwrap()).await,
+                    PRINT_VERSIONS => print_versions_reactor(&command, &ctx, MONGOCLIENT.get().unwrap()).await,
                     _ => ()
                 }},
 
@@ -83,7 +87,10 @@ impl EventHandler for HandlerDiscord {
                     EDIT_END_COMPETITION => edit_start_inscriptions(MONGOCLIENT.get().unwrap(), mci, ctx, EndCompetition).await,
                     EDITION_SELECT => get_edition_end(MONGOCLIENT.get().unwrap(), mci, ctx).await,
                     VALIDATE => println!("OK"),
-                    _ => ()
+                    _ => if mci.data.custom_id.as_str().starts_with(LOCK_VERSION_MODAL) {
+                        version_setup_end(&mci, &ctx, MONGOCLIENT.get().unwrap()).await
+                    }
+                    PRINT_VERSIONS_MODAL => print_versions(&mci, &ctx, MONGOCLIENT.get().unwrap()).await
                 }},
 
             _ => (),

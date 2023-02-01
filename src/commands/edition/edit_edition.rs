@@ -198,9 +198,9 @@ pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageCompone
             }
         }
         TypeDate::EndCompetition => {
-            if new_date.to_string() > date_max.to_string() {
-                let msg = format!("La date de début des inscriptions ne peut pas être supérieure à la date de fin des inscriptions ou de début de la compétition.\
-                    \n\nRéessaye en entrant une date inférieure à **{}**", NaiveDateTime::from_timestamp(date_min, 0).format("%d/%m/%Y").to_string());
+            if new_date.to_string() < date_max.to_string() {
+                let msg = format!("La date de de fin de la copétition ne peut pas être inférieure à la date de fin des inscriptions ou de début de la compétition.\
+                    \n\nRéessaye en entrant une date supérieure à **{}**", NaiveDateTime::from_timestamp(date_max, 0).format("%d/%m/%Y").to_string());
                 send_error_from_modal(&interaction, &ctx, &msg).await;
                 return;
             }

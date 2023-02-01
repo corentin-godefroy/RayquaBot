@@ -1,11 +1,11 @@
-use std::ops::{Add, Sub};
+use std::ops::{Sub};
 use std::time::{SystemTime, UNIX_EPOCH};
-use chrono::TimeZone;
+
 use serenity::client::Context;
 use serenity::model::application::command::Command;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::model::application::interaction::InteractionResponseType;
-use crate::commands::constants::{BDD_POKE_LEGENDARCEUS, BLUE_COLOR, GREEN_COLOR, PING};
+use crate::commands::constants::{BLUE_COLOR, PING};
 
 
 pub async fn ping_setup(ctx: &Context) {

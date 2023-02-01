@@ -16,7 +16,7 @@ use std::option::Option;
 use mongodb::bson::doc;
 use mongodb::options::{UpdateOptions};
 use std::string::String;
-use serenity::json::prelude::to_string;
+
 use serenity::model::application::command::Command;
 
 struct Roles{
@@ -149,9 +149,9 @@ pub async fn setup_env(ctx: &Context, aci: &ApplicationCommandInteraction, mongo
                 .description(
                     format!("Les catégories et les salons necessaires à la compétition ont été créés avec succès.\n\
                         Pour ajouter une édition, rends toi dans le salon #{} puis tape la commande **/{}\n\
-                        Pour éditer les versions autorisées ou non fait les commandes /{} et /{}.\n\
+                        Pour éditer les versions autorisées ou non fait la commande /{}.\n\
                         Si tu as fait une erreur de saisie, tu peux également modifier ou supprimer les dates avec :\n\
-                        /{} et /{}. Le nom ne peut être changé.", MODERATION_CONVERSATION_CHANNEL_NAME, NEW_EDITION, LOCK_VERSION, UNLOCK_VERSION, EDIT_EDITION, DELETE_EDITION
+                        /{} et /{}. Le nom ne peut être changé.", MODERATION_CONVERSATION_CHANNEL_NAME, NEW_EDITION, VERSION_SETUP, EDIT_EDITION, DELETE_EDITION
                     )
                 )
         })
