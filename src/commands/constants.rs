@@ -17,6 +17,7 @@ pub const ADD_NAMES: &str = "add_names";
 pub const VALIDATE: &str = "validate";
 pub const VERSION_SETUP: &str = "version_setup";
 pub const PRINT_VERSIONS: &str = "print_versions";
+pub const VERSION_PLAYER_SETUP: &str = "version_player_setup";
 
 
 pub const DELETE_EDITION_MODAL: &str = "delete_edition_modal";
@@ -26,8 +27,7 @@ pub const EDIT_END_INSCRIPTIONS: &str = "edit_end_inscriptions";
 pub const EDIT_START_COMPETITION: &str = "edit_start_competition";
 pub const EDIT_END_COMPETITION: &str = "edit_end_competition";
 pub const PRINT_VERSIONS_MODAL: &str = "print_versions_modal";
-
-pub const EDIT_START_EDITION_END: &str = "edit_start_inscriptions_end"; // ?????
+pub const VERSION_PLAYER_MODAL: &str = "version_setup_modal";
 
 pub const EDITIONS_COLLECTION: &str = "editions";
 pub const SERVER_COLLECTION: &str = "servers";
@@ -163,7 +163,7 @@ pub const BDD_POKE_EMERALD                     : &str = "emerald";
 pub const BDD_POKE_DIAMOND_PEARL               : &str = "diamond_pearl";
 pub const BDD_POKE_PLATINUM                    : &str = "platinum";
 pub const BDD_POKE_HEARTGOLD_SOULSILVER        : &str = "heartgold_soulsilver";
-pub const BDD_POKE_BLACK_WHITE                 : &str = "black_chite";
+pub const BDD_POKE_BLACK_WHITE                 : &str = "black_white";
 pub const BDD_POKE_BLACK2_WHITE2               : &str = "black2_white2";
 pub const BDD_POKE_X_Y                         : &str = "x_y";
 pub const BDD_POKE_OMEGA_RUBY_ALPHA_SAPPHIRE   : &str = "omega_ruby_alpha_sapphire";
@@ -213,3 +213,13 @@ pub const POKE_XD                           : &str = "XD";
 pub const MESSAGE_ID: &str = "message_id";
 pub const TRAINER_NAME: &str = "trainer_name";
 pub const MORE_INFO: &str = "more_info";
+
+pub const NON_POSSEDE_STR: &str = "Non possédé";
+pub const POSSEDE_STR: &str = "Possédé sans Charme Chroma";
+pub const CHARME_CHROMA_STR: &str = "Possédé avec Charme Chroma";
+pub const VERSION_INTERDITE_STR: &str = "VERSION INTERDITE";
+
+pub const NON_POSSEDE_VALUE: i32 = 0;
+pub const POSSEDE_VALUE: i32 = 1;
+pub const CHARME_CHROMA_VALUE: i32 = 2;
+pub const VERSION_INTERDITE_VALUE: i32 = -1;

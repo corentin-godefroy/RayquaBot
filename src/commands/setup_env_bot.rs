@@ -864,7 +864,10 @@ async fn create_faq_forum(ctx: &Context, aci: &ApplicationCommandInteraction, pa
     if existance == 0{
         let permissions = vec![
             PermissionOverwrite {
-                allow: Permissions::VIEW_CHANNEL,
+                allow: Permissions::VIEW_CHANNEL |
+                    Permissions::SEND_MESSAGES |
+                    Permissions::SEND_MESSAGES_IN_THREADS |
+                    Permissions::CREATE_PUBLIC_THREADS,
                 deny: Permissions::all(),
                 kind: PermissionOverwriteType::Role(roles.everyone.unwrap())
             }
@@ -892,7 +895,7 @@ async fn create_registration_channel(ctx: &Context, aci: &ApplicationCommandInte
             allow: Permissions::VIEW_CHANNEL |
                 Permissions::SEND_MESSAGES |
                 Permissions::READ_MESSAGE_HISTORY |
-            Permissions::USE_SLASH_COMMANDS,
+                Permissions::USE_SLASH_COMMANDS,
             deny: Permissions::all(),
             kind: PermissionOverwriteType::Role(roles.everyone.unwrap())
         },

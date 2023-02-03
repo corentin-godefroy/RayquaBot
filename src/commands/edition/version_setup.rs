@@ -7,7 +7,9 @@ use serenity::model::application::command::{Command};
 use serenity::model::application::command::CommandOptionType::{SubCommand};
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::model::application::interaction::InteractionResponseType;
+use serenity::model::application::interaction::InteractionResponseType::ChannelMessageWithSource;
 use serenity::model::application::interaction::message_component::MessageComponentInteraction;
+use serenity::model::Permissions;
 use serenity::model::prelude::command::CommandOptionType::Boolean;
 use serenity::model::prelude::interaction::modal::ModalSubmitInteraction;
 use crate::commands::common_functions::{send_error_from_command};
@@ -209,90 +211,125 @@ pub async fn version_setup(ctx: &Context) {
                             .description(POKE_SCARLET_VIOLET)
                     })
             })
-            
+            .default_member_permissions(Permissions::ADMINISTRATOR)
     })
         .await.expect("Creation of lock_version failed");
 }
 
-pub async fn version_setup_reactor(command: &ApplicationCommandInteraction, ctx: &Context, client: &Client) {
-    let com = &command.clone();
-    
-    let user_id = com.user.id.to_string();
-    
-    let editions = client.database(RAYQUABOT_DB).collection::<Document>(EDITIONS_COLLECTION).aggregate(
-        [doc! {
-            "$match": doc! {
-                ORGANIZER: &user_id.as_str(),
-                COMPETITION_END_DATE: doc! {
-                    "$gt": chrono::Utc::now().timestamp()
+pub async fn version_setup_reactor(mut command: &ApplicationCommandInteraction, ctx: &Context, client: &Client) {
+    let mut com = command.clone();
+
+    if com.guild_id.is_none(){
+        command.create_interaction_response(&ctx.http, |response|{
+            response.kind(ChannelMessageWithSource)
+                .interaction_response_data(|message|{
+                    message.content("Cette commande ne peut être utilisée que dans un serveur")
+                })
+        })
+            .await.expect("Failed to send message");
+        return;
+    }
+
+
+
+    if com.member.unwrap().permissions.unwrap().contains(Permissions::ADMINISTRATOR) == false{
+        command.create_interaction_response(&ctx.http, |response|{
+            response.kind(ChannelMessageWithSource)
+                .interaction_response_data(|message|{
+                    message.content("Tu n'as pas les permissions nécessaires pour utiliser cette commande")
+                })
+        })
+            .await.expect("Failed to send message");
+        return;
+    }
+
+    let guild_id = &command.guild_id.unwrap().0.to_string();
+
+    let collection: mongodb::Collection<Document> =  client.database(RAYQUABOT_DB).collection(EDITIONS_COLLECTION);
+
+    let mut editions: Vec<Document> = collection.aggregate(
+        vec![
+            doc!{
+                "$match": doc!{
+                    GUILD_ID: guild_id
                 }
-            }
-        },
-            doc! {
-                "$project": doc! {
+            },
+            doc!{
+                "$sort": doc!{
                     EDITION_NAME: 1
                 }
             }
-        ]
-        , None).await.unwrap().collect::<Vec<_>>().await;
-    
-    let mut opt = Vec::new();
-    
-    for edition in editions {
-        let edition = edition.unwrap().get(EDITION_NAME).unwrap().as_str().unwrap().to_string();
-        opt.push(edition);
+        ],
+        None
+    )
+        .await
+        .expect("Failed to aggregate")
+        .map(|result| result.expect("Failed to get result"))
+        .collect()
+        .await;
+
+    let mut edition_names: Vec<String> = Vec::new();
+
+    for edition in editions.iter(){
+        edition_names.push(edition.get(EDITION_NAME).unwrap().as_str().unwrap().to_string());
     }
-    
-    if opt.is_empty() {
-        let msg = format!("Aucune édition n'est actuellement modifiable.");
-        send_error_from_command(&com, &ctx, &msg).await;
-        return;
+
+    let mut options_str = "".to_owned();
+
+    let mut options = command.data.options.to_vec().get(0).unwrap().options.to_vec();
+
+    for option in options{
+        options_str = options_str + "*" + option.name.as_str() + "-" + option.value.as_ref().unwrap().as_bool().unwrap().to_string().as_str()
     }
-    
-    let mut custom_id = "".to_owned();
-    
-    let options = command.data.options.get(0).unwrap().options.to_vec();
-    
-    for option in options {
-        custom_id = custom_id + "-" + option.name.as_str() + "*" + option.value.unwrap().to_string().as_str()
-    }
-    
-    command.create_interaction_response(&ctx.http, |response| {
-        response.kind(InteractionResponseType::ChannelMessageWithSource)
-            .interaction_response_data(|message|
-                message.components(|components| {
-                    components.create_action_row(|action_row| {
-                        action_row.create_select_menu(|select_menu| {
-                            select_menu.custom_id(LOCK_VERSION_MODAL.to_owned() + custom_id.as_str())
-                                .placeholder("Choisis une édition")
-                                .options(|options| {
-                                    for option in opt {
-                                        options.create_option(|select_menu_option| {
-                                            select_menu_option.label(&option)
-                                                .value(&option)
-                                        });
-                                    }
-                                    options
-                                })
+
+    &command.create_interaction_response(&ctx.http, |response|{
+        response.kind(ChannelMessageWithSource)
+            .interaction_response_data(|message|{
+                message.content("Sélectionne l'édition à modifier")
+                    .components(|components|{
+                        components.create_action_row(|action_row|{
+                            action_row.create_select_menu(|select_menu|{
+                                select_menu.custom_id(LOCK_VERSION_MODAL.to_string() + options_str.as_str())
+                                    .placeholder("Sélectionne une édition")
+                                    .options(|options|{
+                                        for edition_name in edition_names.iter(){
+                                            options.create_option(|option|{
+                                                option.label(edition_name)
+                                                    .value(edition_name.to_string())
+                                            });
+                                        }
+                                        options
+                                    })
+                            })
                         })
                     })
-                })
-            )
+            })
     })
         .await
-        .expect("Failed to send interaction response");
+        .expect("Failed to send message");
+}
+
+fn interdiction_to_emote<'a>(edition: &'a Document, field: &'a str) -> &'a str {
+    let interdiction = edition.get(field).unwrap().as_i32().unwrap();
+    match interdiction{
+        0 => "❌",
+        1 => "✅",
+        _ => "Erreur"
+    }
 }
 
 pub async fn version_setup_end(mci: &MessageComponentInteraction, ctx: &Context, client: &Client){
-    let mut options: Vec<&str> = mci.data.custom_id.split('-').collect();
-    let guild_id = mci.guild_id.unwrap().0.to_string();
+    let mut options: Vec<&str> = mci.data.custom_id.split('*').collect();
+
+    let guild_id = &mci.guild_id.unwrap().0.to_string();
+
     let edition_name = mci.data.values.get(0).unwrap();
     
     let collection: mongodb::Collection<Document> =  client.database(RAYQUABOT_DB).collection(EDITIONS_COLLECTION);
     
     options.remove(0);
     for option in options{
-        let param: Vec<&str> = option.split('*').collect();
+        let param: Vec<&str> = option.split('-').collect();
         let version: &str = param[0];
     
         let filter = doc! {
@@ -325,35 +362,35 @@ pub async fn version_setup_end(mci: &MessageComponentInteraction, ctx: &Context,
                 message.embed(|embed|{
                     embed.colour(LIGHT_BLUE_COLOR)
                     .title(format!("Versions autorisées pour l'édition {}", edition_name))
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_RED_GREEN_BLUE,               if edition.get(BDD_POKE_RED_GREEN_BLUE)              .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}), 
-                               format!("**{} : \n{}**\n---------------------------",POKE_YELLOW,                       if edition.get(BDD_POKE_YELLOW)                      .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_GOLD_SILVER,                  if edition.get(BDD_POKE_GOLD_SILVER)                 .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
-                               format!("**{} : \n{}**\n---------------------------",POKE_CRYSTAL,                      if edition.get(BDD_POKE_CRYSTAL)                     .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_RUBY_SAPPHIRE,                if edition.get(BDD_POKE_RUBY_SAPPHIRE)               .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
-                               format!("**{} : \n{}**\n---------------------------",POKE_FIRERED_LEAFGREEN,            if edition.get(BDD_POKE_FIRERED_LEAFGREEN)           .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_EMERALD,                      if edition.get(BDD_POKE_EMERALD)                     .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
-                               format!("**{} : \n{}**\n---------------------------",POKE_DIAMOND_PEARL,                if edition.get(BDD_POKE_DIAMOND_PEARL)               .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_PLATINUM,                     if edition.get(BDD_POKE_PLATINUM)                    .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
-                               format!("**{} : \n{}**\n---------------------------",POKE_HEARTGOLD_SOULSILVER,         if edition.get(BDD_POKE_HEARTGOLD_SOULSILVER)        .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_BLACK_WHITE,                  if edition.get(BDD_POKE_BLACK_WHITE)                 .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
-                               format!("**{} : \n{}**\n---------------------------",POKE_BLACK2_WHITE2,                if edition.get(BDD_POKE_BLACK2_WHITE2)               .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_X_Y,                          if edition.get(BDD_POKE_X_Y)                         .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
-                               format!("**{} : \n{}**\n---------------------------",POKE_OMEGA_RUBY_ALPHA_SAPPHIRE,    if edition.get(BDD_POKE_OMEGA_RUBY_ALPHA_SAPPHIRE)   .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_SUN_MOON,                     if edition.get(BDD_POKE_SUN_MOON)                    .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
-                               format!("**{} : \n{}**\n---------------------------",POKE_ULTRASUN_ULTRAMOON,           if edition.get(BDD_POKE_ULTRASUN_ULTRAMOON)          .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_LETSGOPIKACHU_LETSGOEEVEE,    if edition.get(BDD_POKE_LETSGOPIKACHU_LETSGOEEVEE)   .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
-                               format!("**{} : \n{}**\n---------------------------",POKE_SWORD_SHIELD,                 if edition.get(BDD_POKE_SWORD_SHIELD)                .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_BRILLANTDIAMOND_SHININGPEARL, if edition.get(BDD_POKE_BRILLANTDIAMOND_SHININGPEARL).unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
-                               format!("**{} : \n{}**\n---------------------------",POKE_LEGENDARCEUS,                 if edition.get(BDD_POKE_LEGENDARCEUS)                .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_SCARLET_VIOLET,               if edition.get(BDD_POKE_SCARLET_VIOLET)              .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
-                               format!("**{} : \n{}**\n---------------------------",POKE_DONJON_MYSTERE,               if edition.get(BDD_POKE_DONJON_MYSTERE)              .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_STADIUM_EU,                   if edition.get(BDD_POKE_STADIUM_EU)                  .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
-                               format!("**{} : \n{}**\n---------------------------", POKE_STADIUM_JAP,                 if edition.get(BDD_POKE_STADIUM_JAP)                 .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_STADIUM_2,                    if edition.get(BDD_POKE_STADIUM_2)                   .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_RED_GREEN_BLUE,               interdiction_to_emote(&edition, BDD_POKE_RED_GREEN_BLUE)              ),
+                               format!("**{} : \n{}**\n---------------------------",POKE_YELLOW,                       interdiction_to_emote(&edition, BDD_POKE_YELLOW)                      ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_GOLD_SILVER,                  interdiction_to_emote(&edition, BDD_POKE_GOLD_SILVER)                 ),
+                               format!("**{} : \n{}**\n---------------------------",POKE_CRYSTAL,                      interdiction_to_emote(&edition, BDD_POKE_CRYSTAL)                     ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_RUBY_SAPPHIRE,                interdiction_to_emote(&edition, BDD_POKE_RUBY_SAPPHIRE)               ),
+                               format!("**{} : \n{}**\n---------------------------",POKE_FIRERED_LEAFGREEN,            interdiction_to_emote(&edition, BDD_POKE_FIRERED_LEAFGREEN)           ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_EMERALD,                      interdiction_to_emote(&edition, BDD_POKE_EMERALD)                     ),
+                               format!("**{} : \n{}**\n---------------------------",POKE_DIAMOND_PEARL,                interdiction_to_emote(&edition, BDD_POKE_DIAMOND_PEARL)               ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_PLATINUM,                     interdiction_to_emote(&edition, BDD_POKE_PLATINUM)                    ),
+                               format!("**{} : \n{}**\n---------------------------",POKE_HEARTGOLD_SOULSILVER,         interdiction_to_emote(&edition, BDD_POKE_HEARTGOLD_SOULSILVER)        ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_BLACK_WHITE,                  interdiction_to_emote(&edition, BDD_POKE_BLACK_WHITE)                 ),
+                               format!("**{} : \n{}**\n---------------------------",POKE_BLACK2_WHITE2,                interdiction_to_emote(&edition, BDD_POKE_BLACK2_WHITE2)               ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_X_Y,                          interdiction_to_emote(&edition, BDD_POKE_X_Y)                         ),
+                               format!("**{} : \n{}**\n---------------------------",POKE_OMEGA_RUBY_ALPHA_SAPPHIRE,    interdiction_to_emote(&edition, BDD_POKE_OMEGA_RUBY_ALPHA_SAPPHIRE)   ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_SUN_MOON,                     interdiction_to_emote(&edition, BDD_POKE_SUN_MOON)                    ),
+                               format!("**{} : \n{}**\n---------------------------",POKE_ULTRASUN_ULTRAMOON,           interdiction_to_emote(&edition, BDD_POKE_ULTRASUN_ULTRAMOON)          ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_LETSGOPIKACHU_LETSGOEEVEE,    interdiction_to_emote(&edition, BDD_POKE_LETSGOPIKACHU_LETSGOEEVEE)   ),
+                               format!("**{} : \n{}**\n---------------------------",POKE_SWORD_SHIELD,                 interdiction_to_emote(&edition, BDD_POKE_SWORD_SHIELD)                ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_BRILLANTDIAMOND_SHININGPEARL, interdiction_to_emote(&edition, BDD_POKE_BRILLANTDIAMOND_SHININGPEARL)),
+                               format!("**{} : \n{}**\n---------------------------",POKE_LEGENDARCEUS,                 interdiction_to_emote(&edition, BDD_POKE_LEGENDARCEUS)                ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_SCARLET_VIOLET,               interdiction_to_emote(&edition, BDD_POKE_SCARLET_VIOLET)              ),
+                               format!("**{} : \n{}**\n---------------------------",POKE_DONJON_MYSTERE,               interdiction_to_emote(&edition, BDD_POKE_DONJON_MYSTERE)              ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_STADIUM_EU,                   interdiction_to_emote(&edition, BDD_POKE_STADIUM_EU)                  ),
+                               format!("**{} : \n{}**\n---------------------------", POKE_STADIUM_JAP,                 interdiction_to_emote(&edition, BDD_POKE_STADIUM_JAP)                 ),true)
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_STADIUM_2,                    interdiction_to_emote(&edition, BDD_POKE_STADIUM_2)                   ),
                                "", true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_XD,                           if edition.get(BDD_POKE_XD)                          .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_XD,                           interdiction_to_emote(&edition, BDD_POKE_XD)                          ),
                                "", true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_COLOSEUM,                     if edition.get(BDD_POKE_COLOSEUM)                    .unwrap().as_i32().unwrap() == 1 {"✅"} else {"❌"}),
+                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_COLOSEUM,                     interdiction_to_emote(&edition, BDD_POKE_COLOSEUM)                    ),
                                "", true)
                 })
             })

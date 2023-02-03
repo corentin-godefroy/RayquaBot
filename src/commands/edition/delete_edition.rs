@@ -34,6 +34,7 @@ pub async fn delete_edition_reactor(client : &MongoClient, command : &Applicatio
         [doc! {
             "$match": doc! {
                 ORGANIZER: &user_id.as_str(),
+                GUILD_ID: &com.guild_id.unwrap().to_string(),
                 COMPETITION_END_DATE: doc! {
                     "$gt": chrono::Utc::now().timestamp()
                 }

@@ -18,6 +18,7 @@ pub async fn print_versions_setup(ctx: &Context){
         command
             .name(PRINT_VERSIONS)
             .description("Affiche les versions autorisées pour l'édition")
+
     })
         .await;
 }
