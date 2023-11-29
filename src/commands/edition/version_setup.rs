@@ -1,6 +1,5 @@
 use mongodb::bson::{doc, Document};
 use mongodb::Client;
-use mongodb::options::UpdateOptions;
 use serenity::client::Context;
 use serenity::futures::StreamExt;
 use serenity::model::application::command::{Command};
@@ -11,8 +10,7 @@ use serenity::model::application::interaction::InteractionResponseType::ChannelM
 use serenity::model::application::interaction::message_component::MessageComponentInteraction;
 use serenity::model::Permissions;
 use serenity::model::prelude::command::CommandOptionType::Boolean;
-use serenity::model::prelude::interaction::modal::ModalSubmitInteraction;
-use crate::commands::common_functions::{send_error_from_command};
+use crate::commands::common_functions::get_versions_list_tuple;
 use crate::commands::constants::*;
 
 pub async fn version_setup(ctx: &Context) {
@@ -216,8 +214,8 @@ pub async fn version_setup(ctx: &Context) {
         .await.expect("Creation of lock_version failed");
 }
 
-pub async fn version_setup_reactor(mut command: &ApplicationCommandInteraction, ctx: &Context, client: &Client) {
-    let mut com = command.clone();
+pub async fn version_setup_reactor(command: &ApplicationCommandInteraction, ctx: &Context, client: &Client) {
+    let com = command.clone();
 
     if com.guild_id.is_none(){
         command.create_interaction_response(&ctx.http, |response|{
@@ -247,7 +245,7 @@ pub async fn version_setup_reactor(mut command: &ApplicationCommandInteraction, 
 
     let collection: mongodb::Collection<Document> =  client.database(RAYQUABOT_DB).collection(EDITIONS_COLLECTION);
 
-    let mut editions: Vec<Document> = collection.aggregate(
+    let editions: Vec<Document> = collection.aggregate(
         vec![
             doc!{
                 "$match": doc!{
@@ -276,13 +274,13 @@ pub async fn version_setup_reactor(mut command: &ApplicationCommandInteraction, 
 
     let mut options_str = "".to_owned();
 
-    let mut options = command.data.options.to_vec().get(0).unwrap().options.to_vec();
+    let options = command.data.options.to_vec().get(0).unwrap().options.to_vec();
 
     for option in options{
         options_str = options_str + "*" + option.name.as_str() + "-" + option.value.as_ref().unwrap().as_bool().unwrap().to_string().as_str()
     }
 
-    &command.create_interaction_response(&ctx.http, |response|{
+    command.create_interaction_response(&ctx.http, |response|{
         response.kind(ChannelMessageWithSource)
             .interaction_response_data(|message|{
                 message.content("Sélectionne l'édition à modifier")
@@ -355,43 +353,29 @@ pub async fn version_setup_end(mci: &MessageComponentInteraction, ctx: &Context,
     };
     
     let edition = collection.find_one(filter, None).await.unwrap().unwrap();
+
+    let versions = get_versions_list_tuple();
     
     mci.create_interaction_response(&ctx.http, |response|{
         response.kind(InteractionResponseType::ChannelMessageWithSource)
             .interaction_response_data(|message|{
-                message.embed(|embed|{
+                message.embed(|embed| {
                     embed.colour(LIGHT_BLUE_COLOR)
-                    .title(format!("Versions autorisées pour l'édition {}", edition_name))
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_RED_GREEN_BLUE,               interdiction_to_emote(&edition, BDD_POKE_RED_GREEN_BLUE)              ),
-                               format!("**{} : \n{}**\n---------------------------",POKE_YELLOW,                       interdiction_to_emote(&edition, BDD_POKE_YELLOW)                      ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_GOLD_SILVER,                  interdiction_to_emote(&edition, BDD_POKE_GOLD_SILVER)                 ),
-                               format!("**{} : \n{}**\n---------------------------",POKE_CRYSTAL,                      interdiction_to_emote(&edition, BDD_POKE_CRYSTAL)                     ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_RUBY_SAPPHIRE,                interdiction_to_emote(&edition, BDD_POKE_RUBY_SAPPHIRE)               ),
-                               format!("**{} : \n{}**\n---------------------------",POKE_FIRERED_LEAFGREEN,            interdiction_to_emote(&edition, BDD_POKE_FIRERED_LEAFGREEN)           ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_EMERALD,                      interdiction_to_emote(&edition, BDD_POKE_EMERALD)                     ),
-                               format!("**{} : \n{}**\n---------------------------",POKE_DIAMOND_PEARL,                interdiction_to_emote(&edition, BDD_POKE_DIAMOND_PEARL)               ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_PLATINUM,                     interdiction_to_emote(&edition, BDD_POKE_PLATINUM)                    ),
-                               format!("**{} : \n{}**\n---------------------------",POKE_HEARTGOLD_SOULSILVER,         interdiction_to_emote(&edition, BDD_POKE_HEARTGOLD_SOULSILVER)        ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_BLACK_WHITE,                  interdiction_to_emote(&edition, BDD_POKE_BLACK_WHITE)                 ),
-                               format!("**{} : \n{}**\n---------------------------",POKE_BLACK2_WHITE2,                interdiction_to_emote(&edition, BDD_POKE_BLACK2_WHITE2)               ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_X_Y,                          interdiction_to_emote(&edition, BDD_POKE_X_Y)                         ),
-                               format!("**{} : \n{}**\n---------------------------",POKE_OMEGA_RUBY_ALPHA_SAPPHIRE,    interdiction_to_emote(&edition, BDD_POKE_OMEGA_RUBY_ALPHA_SAPPHIRE)   ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_SUN_MOON,                     interdiction_to_emote(&edition, BDD_POKE_SUN_MOON)                    ),
-                               format!("**{} : \n{}**\n---------------------------",POKE_ULTRASUN_ULTRAMOON,           interdiction_to_emote(&edition, BDD_POKE_ULTRASUN_ULTRAMOON)          ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_LETSGOPIKACHU_LETSGOEEVEE,    interdiction_to_emote(&edition, BDD_POKE_LETSGOPIKACHU_LETSGOEEVEE)   ),
-                               format!("**{} : \n{}**\n---------------------------",POKE_SWORD_SHIELD,                 interdiction_to_emote(&edition, BDD_POKE_SWORD_SHIELD)                ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_BRILLANTDIAMOND_SHININGPEARL, interdiction_to_emote(&edition, BDD_POKE_BRILLANTDIAMOND_SHININGPEARL)),
-                               format!("**{} : \n{}**\n---------------------------",POKE_LEGENDARCEUS,                 interdiction_to_emote(&edition, BDD_POKE_LEGENDARCEUS)                ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_SCARLET_VIOLET,               interdiction_to_emote(&edition, BDD_POKE_SCARLET_VIOLET)              ),
-                               format!("**{} : \n{}**\n---------------------------",POKE_DONJON_MYSTERE,               interdiction_to_emote(&edition, BDD_POKE_DONJON_MYSTERE)              ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_STADIUM_EU,                   interdiction_to_emote(&edition, BDD_POKE_STADIUM_EU)                  ),
-                               format!("**{} : \n{}**\n---------------------------", POKE_STADIUM_JAP,                 interdiction_to_emote(&edition, BDD_POKE_STADIUM_JAP)                 ),true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_STADIUM_2,                    interdiction_to_emote(&edition, BDD_POKE_STADIUM_2)                   ),
-                               "", true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_XD,                           interdiction_to_emote(&edition, BDD_POKE_XD)                          ),
-                               "", true)
-                        .field(format!("{} : \n{}\n---------------------------"    ,POKE_COLOSEUM,                     interdiction_to_emote(&edition, BDD_POKE_COLOSEUM)                    ),
-                               "", true)
+                        .title(format!("Versions autorisées pour l'édition {}", edition_name));
+                    if versions.len() %2 == 1 {
+                        for i in (0.. versions.len() - 1).step_by(2) {
+                        embed.field(format!("{} : \n{}\n--------------------------", versions[i].1, interdiction_to_emote(&edition, versions[i].0)),
+                                    format!("**{} : \n{}\n--------------------------**", versions[i + 1].1, interdiction_to_emote(&edition, versions[i + 1].0)), true);
+                        }
+                        embed.field(format!("{} : \n{}\n--------------------------", versions[versions.len() - 1].1, interdiction_to_emote(&edition, versions[versions.len() - 1].0)), "".to_string(), true);
+                    }
+                    else {
+                        for i in (0.. versions.len() - 1).step_by(2) {
+                            embed.field(format!("{} : \n{}\n--------------------------", versions[i].1, interdiction_to_emote(&edition, versions[i].0)),
+                                        format!("**{} : \n{}\n--------------------------**", versions[i + 1].1, interdiction_to_emote(&edition, versions[i + 1].0)),true);
+                        }
+                    }
+                    embed
                 })
             })
     }).await.unwrap();

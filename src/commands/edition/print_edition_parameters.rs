@@ -1,17 +1,14 @@
-use std::str::FromStr;
 use mongodb::bson::{doc, Document};
 use mongodb::{Client, Collection};
 use serenity::client::Context;
 use serenity::futures::StreamExt;
 use serenity::model::application::command::Command;
-use serenity::model::application::component::ButtonStyle;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::model::application::interaction::InteractionResponseType;
 use serenity::model::application::interaction::message_component::MessageComponentInteraction;
-use serenity::model::id::RoleId;
 use crate::commands::common_functions::send_error_from_command;
 use crate::commands::constants::*;
-use tokio::join;
+
 
 pub async fn print_versions_setup(ctx: &Context){
     let _ = Command::create_global_application_command(&ctx.http, |command| {

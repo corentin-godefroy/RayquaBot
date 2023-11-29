@@ -8,11 +8,7 @@ use mongodb::{Client as MongoClient, Client};
 use mongodb::bson::{Document};
 use chrono;
 use chrono::{NaiveDate, NaiveDateTime};
-
 use serenity::model::application::component::InputTextStyle;
-
-
-
 use serenity::model::id::{GuildId};
 use serenity::model::Permissions;
 use tokio::join;
@@ -267,10 +263,10 @@ pub async fn new_edition_modal(client : &MongoClient, mci : ModalSubmitInteracti
                         message.embed(|embed| {
                             embed.title(&nom_competition.value.to_string())
                                 .description(format!("Voici les informations de l'édition {}", &nom_competition.value.to_string()))
-                                .field("Date de début des inscriptions" , &format!("{}", NaiveDateTime::from_timestamp(timestamps.0, 0).format("%d/%m/%Y")), false)
-                                .field("Date de fin des inscriptions"   , &format!("{}", NaiveDateTime::from_timestamp(timestamps.1, 0).format("%d/%m/%Y")), false)
-                                .field("Date de début de la compétition", &format!("{}", NaiveDateTime::from_timestamp(timestamps.2, 0).format("%d/%m/%Y")), false)
-                                .field("Date de fin de la compétition"  , &format!("{}", NaiveDateTime::from_timestamp(timestamps.3, 0).format("%d/%m/%Y")), false)
+                                .field("Date de début des inscriptions" , &format!("{}", NaiveDateTime::from_timestamp_opt(timestamps.0, 0).unwrap().format("%d/%m/%Y")), false)
+                                .field("Date de fin des inscriptions"   , &format!("{}", NaiveDateTime::from_timestamp_opt(timestamps.1, 0).unwrap().format("%d/%m/%Y")), false)
+                                .field("Date de début de la compétition", &format!("{}", NaiveDateTime::from_timestamp_opt(timestamps.2, 0).unwrap().format("%d/%m/%Y")), false)
+                                .field("Date de fin de la compétition"  , &format!("{}", NaiveDateTime::from_timestamp_opt(timestamps.3, 0).unwrap().format("%d/%m/%Y")), false)
                                 .field("Que faire ensuite ?",
                                        "- Modifier les valeurs de probabilité en faisant \"/edit_methode\"\n\
                                        - Modifier les valeurs de temps en faisant \"/edit_time\"\n",
@@ -352,7 +348,7 @@ async fn edition_overlap_check(timestamp_debut : &i64, timestamp_fin : &i64, cli
 async fn get_timestamp_from_date(date : &DATE, msi: &ModalSubmitInteraction, ctx: &Context) -> i64 {
     match NaiveDate::from_ymd_opt(date.annee as i32, date.mois as u32, date.jour as u32) {
         Some(date) => {
-            let date = date.and_hms(0, 0, 0);
+            let date = date.and_hms_opt(0, 0, 0).unwrap();
             let timestamp = date.timestamp();
             timestamp
         },

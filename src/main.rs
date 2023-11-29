@@ -8,21 +8,18 @@ use serenity::{
     prelude::*,
 };
 use std::env;
-
 use mongodb::bson::doc;
 use serenity::framework::StandardFramework;
 use serenity::model::application::interaction::{Interaction};
 use mongodb::{Client as MongoClient};
 use once_cell::sync::OnceCell;
-use serenity::model::guild::Member;
-use serenity::model::id::GuildId;
-use serenity::model::prelude::User;
 use tokio::join;
-
 use crate::commands::*;
 use constants::TypeDate::{EndCompetition, EndRegistration, StartCompetition, StartRegistration};
 use crate::commands::edition::print_edition_parameters::{print_versions, print_versions_reactor, print_versions_setup};
 use crate::commands::edition::version_setup::{version_setup_end, version_setup_reactor, version_setup};
+use crate::commands::joueurs::add_names::{add_names_end, add_names_modal, add_names_reactor, add_names_setup};
+use crate::commands::joueurs::add_proof::{proof_end, proof_reactor, proof_setup};
 use crate::commands::joueurs::registration::{get_registration_reactor, registration_setup};
 use crate::commands::joueurs::versions_player_setup::{version_player_setup, version_player_setup_end, version_player_setup_reactor};
 use crate::commands::setup_env_bot::{setup_env, setup_env_setup};
@@ -41,28 +38,32 @@ struct HandlerDiscord;
 #[async_trait]
 impl EventHandler for HandlerDiscord {
     async fn ready(&self, ctx: Context, ready: Ready) {
-        /*let commands = ctx.http.get_global_application_commands().await.unwrap();
+        let commands = ctx.http.get_global_application_commands().await.unwrap();
         for command in commands{
-            if command.name == VERSION_SETUP {
+            //ctx.http.delete_global_application_command(command.id.0).await.unwrap();
+            /*if command.name == "version_player_setup" {
                 ctx.http.delete_global_application_command(command.id.0).await.unwrap();
-            }
-        }*/
-        let ping = ping_setup(ctx.borrow());
-        let new_edition = new_edition_setup(ctx.borrow());
-        let delete_edition = delete_edition_setup(ctx.borrow());
-        let edit_edition = edit_edition_setup(ctx.borrow());
-        let get_edition = get_edition_setup(ctx.borrow());
-        let setup_env = setup_env_setup(ctx.borrow());
-        let registration = registration_setup(ctx.borrow());
-        let version_setup = version_setup(ctx.borrow());
-        let print_versions = print_versions_setup(ctx.borrow());
-        let version_player_setup = version_player_setup(ctx.borrow());
-        join!(ping, new_edition, delete_edition, edit_edition, get_edition, setup_env, registration, version_setup, version_player_setup);
+            }*/
+        }
+        let _ping = ping_setup(ctx.borrow());
+        let _new_edition = new_edition_setup(ctx.borrow());
+        let _delete_edition = delete_edition_setup(ctx.borrow());
+        let _edit_edition = edit_edition_setup(ctx.borrow());
+        let _get_edition = get_edition_setup(ctx.borrow());
+        let _setup_env = setup_env_setup(ctx.borrow());
+        let _registration = registration_setup(ctx.borrow());
+        let _version_setup = version_setup(ctx.borrow());
+        let _print_versions = print_versions_setup(ctx.borrow());
+        let _version_player_setup = version_player_setup(ctx.borrow());
+        let _proof = proof_setup(ctx.borrow());
+        let _add_names = add_names_setup(ctx.borrow());
+        //join!(_ping, _new_edition, _delete_edition, _edit_edition, _get_edition, _setup_env, _registration, _version_setup, _version_player_setup, _proof, _add_names);
+        let commands = ctx.http.get_global_application_commands().await.unwrap();
+        for command in commands{
+            println!("{:?}", command.name);
+        }
+
         println!("{} is connected!", ready.user.name);
-    }
-
-    async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
-
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -79,12 +80,15 @@ impl EventHandler for HandlerDiscord {
                     VERSION_SETUP => version_setup_reactor(&command, &ctx, MONGOCLIENT.get().unwrap()).await,
                     PRINT_VERSIONS => print_versions_reactor(&command, &ctx, MONGOCLIENT.get().unwrap()).await,
                     VERSION_PLAYER_SETUP => version_player_setup_reactor(&command, &ctx, MONGOCLIENT.get().unwrap()).await,
+                    ADD_PROOF => proof_reactor(&command, &ctx, MONGOCLIENT.get().unwrap()).await,
+                    ADD_NAMES => add_names_reactor(&command, &ctx).await,
                     _ => ()
                 }},
 
             Interaction::ModalSubmit(mci) => {
                 match mci.data.custom_id.as_str() {
                     CREATE_NEW_EDITION => new_edition_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
+                    ADD_NAMES_REACTOR => add_names_modal(MONGOCLIENT.get().unwrap(), mci, ctx).await,
                     _ => ()
                 }},
 
@@ -103,7 +107,13 @@ impl EventHandler for HandlerDiscord {
                     else if mci.data.custom_id.as_str().starts_with(VERSION_PLAYER_MODAL) {
                         version_player_setup_end(&mci, &ctx, MONGOCLIENT.get().unwrap()).await
                     }
-                    PRINT_VERSIONS_MODAL => print_versions(&mci, &ctx, MONGOCLIENT.get().unwrap()).await
+                    else if mci.data.custom_id.as_str().starts_with(PROOFS_MODAL) {
+                        proof_end(&mci, &ctx, MONGOCLIENT.get().unwrap()).await
+                    }
+                    else if mci.data.custom_id.as_str().starts_with(ADD_NAMES_MODAL) {
+                        add_names_end(MONGOCLIENT.get().unwrap(), mci, ctx).await
+                    }
+                    PRINT_VERSIONS_MODAL => print_versions(&mci, &ctx, MONGOCLIENT.get().unwrap()).await,
                 }},
 
             _ => (),

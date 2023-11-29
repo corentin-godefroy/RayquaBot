@@ -1,10 +1,7 @@
-
 use std::cmp::{max, min};
 use std::sync::Arc;
-
 use std::time::Duration;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
-
 use serenity::model::application::interaction::{InteractionResponseType};
 use serenity::client::Context;
 use serenity::model::application::command::{Command, CommandOptionType};
@@ -12,13 +9,9 @@ use mongodb::{Client as MongoClient};
 use mongodb::bson::Document;
 use chrono;
 use chrono::{NaiveDate, NaiveDateTime};
-
-
 use serenity::model::application::component::{ActionRowComponent, InputTextStyle};
 use serenity::model::application::interaction::message_component::MessageComponentInteraction;
 use serenity::model::application::interaction::modal::ModalSubmitInteraction;
-
-
 use serenity::model::Permissions;
 use crate::*;
 use crate::common_functions::{get_edition_by_name, get_editions_names, send_error_from_command, send_error_from_modal, send_success_from_modal};
@@ -44,9 +37,6 @@ pub async fn edit_edition_setup(ctx : &Context){
     })
         .await;
 }
-/*
-pub async fn edit_edition(client : &MongoClient, command : &ApplicationCommandInteraction, context : &Context){
-}*/
 
 pub async fn edit_edition_reactor(client : &MongoClient, command : &ApplicationCommandInteraction, context : &Context){
     let ctx = context;
@@ -113,18 +103,18 @@ pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageCompone
 
     match type_modif {
         TypeDate::StartRegistration => {
-            let date1 = NaiveDateTime::from_timestamp(date_min, 0).format("%d/%m/%Y").to_string();
+            let date1 = NaiveDateTime::from_timestamp_opt(date_min, 0).unwrap().format("%d/%m/%Y").to_string();
             msg = format!("JJ/MM/AAAA (< {})", date1.clone());
             type_modif_str = INSCRIPTION_START_DATE;
         }
         TypeDate::EndCompetition => {
-            let date1 = NaiveDateTime::from_timestamp(date_max, 0).format("%d/%m/%Y").to_string();
+            let date1 = NaiveDateTime::from_timestamp_opt(date_max, 0).unwrap().format("%d/%m/%Y").to_string();
             msg = format!("JJ/MM/AAAA (> {})", date1.clone());
             type_modif_str = COMPETITION_END_DATE;
         }
         _ => {
-            let date1 = NaiveDateTime::from_timestamp(date_start_inscription, 0).format("%d/%m/%Y").to_string();
-            let date2 = NaiveDateTime::from_timestamp(date_end_competition, 0).format("%d/%m/%Y").to_string();
+            let date1 = NaiveDateTime::from_timestamp_opt(date_start_inscription, 0).unwrap().format("%d/%m/%Y").to_string();
+            let date2 = NaiveDateTime::from_timestamp_opt(date_end_competition, 0).unwrap().format("%d/%m/%Y").to_string();
             msg = format!("({} <) JJ/MM/AAAA (< {})", &date1.clone(), &date2.clone());
             match type_modif {
                 TypeDate::EndRegistration => {type_modif_str = INSCRIPTION_END_DATE;}
@@ -192,7 +182,7 @@ pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageCompone
         TypeDate::StartRegistration => {
             if new_date.to_string() > date_min.to_string() {
                 let msg = format!("La date de début des inscriptions ne peut pas être supérieure à la date de fin des inscriptions ou de début de la compétition.\
-                    \n\nRéessaye en entrant une date inférieure à **{}**", NaiveDateTime::from_timestamp(date_min, 0).format("%d/%m/%Y").to_string());
+                    \n\nRéessaye en entrant une date inférieure à **{}**", NaiveDateTime::from_timestamp_opt(date_min, 0).unwrap().format("%d/%m/%Y").to_string());
                 send_error_from_modal(&interaction, &ctx, &msg).await;
                 return;
             }
@@ -200,7 +190,7 @@ pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageCompone
         TypeDate::EndCompetition => {
             if new_date.to_string() < date_max.to_string() {
                 let msg = format!("La date de de fin de la copétition ne peut pas être inférieure à la date de fin des inscriptions ou de début de la compétition.\
-                    \n\nRéessaye en entrant une date supérieure à **{}**", NaiveDateTime::from_timestamp(date_max, 0).format("%d/%m/%Y").to_string());
+                    \n\nRéessaye en entrant une date supérieure à **{}**", NaiveDateTime::from_timestamp_opt(date_max, 0).unwrap().format("%d/%m/%Y").to_string());
                 send_error_from_modal(&interaction, &ctx, &msg).await;
                 return;
             }
@@ -208,7 +198,7 @@ pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageCompone
         TypeDate::EndRegistration => {
             if new_date.to_string() > date_start_inscription.to_string() && new_date.to_string() < date_end_competition.to_string() {
                 let msg = format!("La date de fin des inscriptions ne peut pas être inférieure à la date de début des inscriptions.\
-                    \n\nRéessaye en entrant une date supérieure à **{}**", NaiveDateTime::from_timestamp(date_start_inscription, 0).format("%d/%m/%Y").to_string());
+                    \n\nRéessaye en entrant une date supérieure à **{}**", NaiveDateTime::from_timestamp_opt(date_start_inscription, 0).unwrap().format("%d/%m/%Y").to_string());
                 send_error_from_modal(&interaction, &ctx, &msg).await;
                 return;
             }
@@ -216,14 +206,14 @@ pub async fn edit_start_inscriptions(client : &MongoClient, mci : MessageCompone
         TypeDate::StartCompetition => {
             if new_date.to_string() > date_start_inscription.to_string()  && new_date.to_string() < date_end_competition.to_string(){
                 let msg = format!("La date de début des inscriptions ne peut pas être supérieure à la date de fin des inscriptions.\
-                    \n\nRéessaye en entrant une date inférieure à **{}**", NaiveDateTime::from_timestamp(date_end_competition, 0).format("%d/%m/%Y").to_string());
+                    \n\nRéessaye en entrant une date inférieure à **{}**", NaiveDateTime::from_timestamp_opt(date_end_competition, 0).unwrap().format("%d/%m/%Y").to_string());
                 send_error_from_modal(&interaction, &ctx, &msg).await;
                 return;
             }
         }
     }
 
-    let date = NaiveDate::parse_from_str(&new_date, "%d/%m/%Y").unwrap().and_hms_micro(0, 0, 0, 0).timestamp();
+    let date = NaiveDate::parse_from_str(&new_date, "%d/%m/%Y").unwrap().and_hms_micro_opt(0, 0, 0, 0).unwrap().timestamp();
     update_date(&ctx, &interaction, &client, &type_modif_str, &date, &edition).await;
 }
 

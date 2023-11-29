@@ -1,1 +1,0 @@
-//TODO cas où un joueur à quitté après s'etre inscrit mais avant le début de la compétition

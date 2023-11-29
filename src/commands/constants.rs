@@ -2,11 +2,10 @@ pub const VALUE_START_REGISTRATION: &str = "edit_start_registration";
 pub const VALUE_END_REGISTRATION: &str = "edit_end_registration";
 pub const VALUE_START_COMPETITION: &str = "edit_start_competition";
 pub const VALUE_END_COMPETITION: &str = "edit_end_competition";
-pub const CREATE_NEW_EDITION: &str = "create_new_edition";
 pub const CREATE_EDITION_INSCRIPTION_ID: &str = "inscription";
 pub const CREATE_EDITION_COMPETITION_ID: &str = "competition";
 
-pub const PING: &str = "ping";
+//commandes
 pub const NEW_EDITION: &str = "new_edition";
 pub const DELETE_EDITION: &str = "delete_edition";
 pub const EDIT_EDITION: &str = "edit_edition";
@@ -17,10 +16,12 @@ pub const ADD_NAMES: &str = "add_names";
 pub const VALIDATE: &str = "validate";
 pub const VERSION_SETUP: &str = "version_setup";
 pub const PRINT_VERSIONS: &str = "print_versions";
-pub const VERSION_PLAYER_SETUP: &str = "version_player_setup";
-
-
+pub const VERSION_PLAYER_SETUP: &str = "add_player_version";
+pub const ADD_PROOF: &str = "add_proof";
 pub const DELETE_EDITION_MODAL: &str = "delete_edition_modal";
+pub const PING: &str = "ping";
+
+//identifiants modaux
 pub const LOCK_VERSION_MODAL: &str = "lock_version_modal";
 pub const EDIT_START_INSCRIPTIONS: &str = "edit_start_inscription";
 pub const EDIT_END_INSCRIPTIONS: &str = "edit_end_inscriptions";
@@ -28,29 +29,24 @@ pub const EDIT_START_COMPETITION: &str = "edit_start_competition";
 pub const EDIT_END_COMPETITION: &str = "edit_end_competition";
 pub const PRINT_VERSIONS_MODAL: &str = "print_versions_modal";
 pub const VERSION_PLAYER_MODAL: &str = "version_setup_modal";
+pub const PROOFS_MODAL: &str = "proof_modal";
+pub const ADD_NAMES_MODAL: &str = "add_names_modal";
 
+//identifiants input text
+pub const CREATE_NEW_EDITION: &str = "create_new_edition";
+pub const ADD_NAMES_REACTOR: &str = "names";
+
+//collections
+pub const RAYQUABOT_DB: &str = "RayquaBot";
 pub const EDITIONS_COLLECTION: &str = "editions";
 pub const SERVER_COLLECTION: &str = "servers";
 pub const PLAYER_COLLECTION: &str = "players";
 pub const CAPTURES_COLLECTION: &str = "captures";
-pub const RAYQUABOT_DB: &str = "RayquaBot";
-pub const INSCRIPTION_START_DATE: &str = "inscription_start_date";
-pub const INSCRIPTION_END_DATE: &str = "inscription_end_date";
-pub const COMPETITION_START_DATE: &str = "competition_start_date";
-pub const COMPETITION_END_DATE: &str = "competition_end_date";
-pub const GUILD_ID: &str = "guild_id";
-pub const EDITION_NAME: &str = "edition_name";
-pub const ORGANIZER: &str = "organizer";
+pub const PROOFS_COLLECTION: &str = "proofs";
+pub const CHARMS_COLLECTION: &str = "charms";
+pub const VERSIONS_COLLECTION: &str = "versions";
+pub const NAMES_COLLECTION: &str = "names";
 
-pub const EDITION_FILE: &str = "edition_file";
-pub const ADMIN_ROLE_ID: &str = "admin_role_id";
-pub const MODERATOR_ROLE_ID: &str = "moderator_role_id";
-pub const HOST_ROLE_ID: &str = "host_role_id";
-pub const REGISTERED_ROLE_ID: &str = "registered_role_id";
-pub const VERIFIED_ROLE_ID: &str = "verified_role_id";
-pub const MODERATION_CATEGORY_ID: &str = "moderation_category_id";
-pub const COMPETITION_CATEGORY_ID: &str = "edition_category_id";
-pub const REGISTRATION_CHANNEL_ID: &str = "registration_channel_id";
 
 pub const RED_COLOR: i32 = 0xff0000;
 pub const GREEN_COLOR: i32 = 0x00ff00;
@@ -74,43 +70,6 @@ pub const EDITION_SELECT: &str = "edition_select";
 
 pub const SETUP_ENV: &str = "setup";
 pub const IMPORT_ENV: &str = "import_env";
-
-/*
-//catégories et channels
-Arbitrage                      //admin, host, et modérateurs
-  validations en attente       //seuls les hosts peuvent valider les captures
-  joueurs a problemes
-  bans et exclusions
-  discussions
-  discussions (vocal)
-Gradins                        //tout le monde
-  acceuil
-  règlement du serveur
-  général écrit
-  général vocal
-L'Arène                        //cas par cas
-  règlement et infos           //tout le monde
-  annonces                     //tout le monde
-  classement                   //tout le monde
-  captures validées            //tout le monde
-  1 inscriptions               //Tous ceux qui n'ont pas le role inscrit
-  2 versions et charme chroma  //tout ceux qui ont le rôle Inscrit et hosts
-  3 constitution des équipes   //tous ceux qui ont le rôle Vérifié et hosts
-  gimiks                       //tout le monde, change chaque semaine
-[Nom d'équipe]                 //ceux qui ont le role de l'équipe
-  proposition capture
-  ecrit
-  vocal (vocal)
-
-//roles
-Admin //peux voir tous les salons
-Host  //peut voir les salons de modération
-Modérateur //peut voir tous les salons
-Vérifié
-Inscrit
-[noms d'équipes]
-@everyone
-*/
 
 // catégories et channels statiques
 pub const MODERATION_CATEGORY_NAME: &str = "Arbitrage";
@@ -143,14 +102,30 @@ pub const VERIFIED_ROLE_NAME: &str = "Vérifié";
 pub const REGISTERED_ROLE_NAME: &str = "Inscrit";
 pub const EVERYONE_ROLE_NAME: &str = "@everyone";
 
+//Noms de champs bdd
 pub const PLAYER_ID: &str = "player_id";
 pub const VERSIONS: &str = "versions";
 pub const TEAM: &str = "team";
 pub const VERIFIED: &str = "verified";
 pub const CHARMS: &str = "charms";
-
-pub const CHARMS_COLLECTION: &str = "charms";
-pub const VERSIONS_COLLECTION: &str = "versions";
+pub const PROOFS: &str = "proofs";
+pub const INSCRIPTION_START_DATE: &str = "inscription_start_date";
+pub const INSCRIPTION_END_DATE: &str = "inscription_end_date";
+pub const COMPETITION_START_DATE: &str = "competition_start_date";
+pub const COMPETITION_END_DATE: &str = "competition_end_date";
+pub const GUILD_ID: &str = "guild_id";
+pub const EDITION_NAME: &str = "edition_name";
+pub const ORGANIZER: &str = "organizer";
+pub const EDITION_FILE: &str = "edition_file";
+pub const ADMIN_ROLE_ID: &str = "admin_role_id";
+pub const MODERATOR_ROLE_ID: &str = "moderator_role_id";
+pub const HOST_ROLE_ID: &str = "host_role_id";
+pub const REGISTERED_ROLE_ID: &str = "registered_role_id";
+pub const VERIFIED_ROLE_ID: &str = "verified_role_id";
+pub const MODERATION_CATEGORY_ID: &str = "moderation_category_id";
+pub const COMPETITION_CATEGORY_ID: &str = "edition_category_id";
+pub const REGISTRATION_CHANNEL_ID: &str = "registration_channel_id";
+pub const TRAINER_NAMES: &str = "trainer_name";
 
 //pour les valeurs dans la bdd
 pub const BDD_POKE_RED_GREEN_BLUE              : &str = "red_green_blue";
@@ -211,7 +186,6 @@ pub const POKE_STADIUM_2                    : &str = "Stadium 2";
 pub const POKE_XD                           : &str = "XD";
 
 pub const MESSAGE_ID: &str = "message_id";
-pub const TRAINER_NAME: &str = "trainer_name";
 pub const MORE_INFO: &str = "more_info";
 
 pub const NON_POSSEDE_STR: &str = "Non possédé";
